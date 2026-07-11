@@ -151,6 +151,30 @@ export default function App() {
     push('list');
   };
 
+  const addShoppingByName = (name: string) => {
+    const n = name.trim();
+    if (!n) return;
+    addToShopping([{ id: 'sh-manual-' + Date.now(), name: n, emoji: '🛒', note: 'Added manually', lastPrice: 0, lastStore: '' }]);
+  };
+
+  // Adjust a pantry item's quantity. When it reaches 0 the item leaves the
+  // pantry and is moved onto the shopping list to be re-bought.
+  const changeItemQty = (item: GroceryItem, delta: number) => {
+    const newQty = Math.max(0, Math.round((item.qty + delta) * 100) / 100);
+    if (newQty <= 0) {
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      addToShopping([{
+        id: 'sh-' + item.id + '-' + Date.now(),
+        name: item.name, emoji: item.emoji, note: 'Ran out', lastPrice: item.price, lastStore: item.store,
+      }]);
+      back();
+    } else {
+      const updated = { ...item, qty: newQty };
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+      setActiveItem(updated);
+    }
+  };
+
   if (!fontsLoaded || !ready) {
     return (
       <View style={styles.loading}>
@@ -200,6 +224,7 @@ export default function App() {
               onGoPrice={() => push('price')}
               onAddToShoppingList={() => addItemToShopping(activeItem)}
               onFindRecipes={() => push('recipes')}
+              onChangeQty={(delta) => changeItemQty(activeItem, delta)}
             />
           )}
           {screen === 'expiry' && (
@@ -216,7 +241,7 @@ export default function App() {
             <RecipeDetailScreen recipe={activeRecipe} onBack={back} onAddMissingToList={addMissingToShopping} />
           )}
           {screen === 'list' && (
-            <ShoppingListScreen shopping={shopping} cart={cart} onToggle={toggleCart} onAdd={openAddSheet} />
+            <ShoppingListScreen shopping={shopping} cart={cart} onToggle={toggleCart} onManualAdd={addShoppingByName} />
           )}
           {screen === 'add' && <AddItemScreen onBack={back} onSave={addItem} onGoScan={() => push('scan')} />}
           {screen === 'scan' && (

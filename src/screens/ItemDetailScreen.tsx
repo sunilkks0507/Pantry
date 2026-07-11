@@ -11,6 +11,7 @@ export default function ItemDetailScreen({
   onGoPrice,
   onAddToShoppingList,
   onFindRecipes,
+  onChangeQty,
 }: {
   item: GroceryItem;
   onBack: () => void;
@@ -18,6 +19,7 @@ export default function ItemDetailScreen({
   onGoPrice: () => void;
   onAddToShoppingList: () => void;
   onFindRecipes: () => void;
+  onChangeQty: (delta: number) => void;
 }) {
   const st = statusOf(item.days);
   const zone = ZONES[item.zone];
@@ -51,6 +53,22 @@ export default function ItemDetailScreen({
         <View style={{ flex: 1 }}>
           <Text style={styles.storedLabel}>Stored in</Text>
           <Text style={styles.storedValue}>{zone?.label} · {item.spot}</Text>
+        </View>
+      </View>
+
+      <View style={styles.qtyCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.qtyLabel}>Quantity</Text>
+          <Text style={styles.qtyHint}>Reaches 0 → moves to shopping list</Text>
+        </View>
+        <View style={styles.stepper}>
+          <TouchableOpacity onPress={() => onChangeQty(-1)} style={styles.stepBtn} activeOpacity={0.7}>
+            <Text style={styles.stepBtnText}>−</Text>
+          </TouchableOpacity>
+          <Text style={styles.qtyValue}>{item.qty} {item.unit}</Text>
+          <TouchableOpacity onPress={() => onChangeQty(1)} style={styles.stepBtn} activeOpacity={0.7}>
+            <Text style={styles.stepBtnText}>+</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -120,6 +138,13 @@ const styles = StyleSheet.create({
   storedIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.65)', alignItems: 'center', justifyContent: 'center' },
   storedLabel: { fontSize: 12, color: '#6B7466', fontFamily: fonts.body600 },
   storedValue: { fontFamily: fonts.display700, fontSize: 17, color: C.text, marginTop: 1 },
+  qtyCard: { marginHorizontal: 20, marginBottom: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: C.border, borderRadius: 18, padding: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  qtyLabel: { fontFamily: fonts.display700, fontSize: 15, color: C.text },
+  qtyHint: { fontSize: 11.5, color: C.muted, fontFamily: fonts.body500, marginTop: 2 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stepBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.cream, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  stepBtnText: { fontSize: 22, color: C.green, fontFamily: fonts.body700, marginTop: -3 },
+  qtyValue: { fontFamily: fonts.display700, fontSize: 15, color: C.text, minWidth: 58, textAlign: 'center' },
   tileGrid: { marginHorizontal: 20, marginBottom: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 11 },
   tile: { flexBasis: '47%', flexGrow: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: C.border, borderRadius: 18, padding: 14 },
   tileLabel: { fontSize: 12, color: C.muted, fontFamily: fonts.body600, marginBottom: 5 },

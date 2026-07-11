@@ -62,13 +62,10 @@ export const RECIPES: Recipe[] = [
   },
 ];
 
-export const SHOPPING: ShoppingItem[] = [
-  { id: 'sh1', name: 'Whole Milk', emoji: '🥛', note: 'Running low', lastPrice: 235, lastStore: 'Whole Foods' },
-  { id: 'sh2', name: 'Baby Spinach', emoji: '🥬', note: 'Expired', lastPrice: 45, lastStore: 'Trader Joes' },
-  { id: 'sh3', name: 'Chicken Thighs', emoji: '🍗', note: 'Used up', lastPrice: 320, lastStore: 'Costco' },
-  { id: 'sh4', name: 'Greek Yogurt', emoji: '🍶', note: 'Almost out', lastPrice: 190, lastStore: 'Trader Joes' },
-  { id: 'sh5', name: 'Walnuts', emoji: '🌰', note: 'Need for recipe', lastPrice: 480, lastStore: 'Whole Foods' },
-];
+// Starts empty. The shopping list is populated when a pantry item runs out
+// (quantity reaches 0), via the "+ Shopping list" action on an item, from a
+// recipe's missing ingredients, or by adding an item manually.
+export const SHOPPING: ShoppingItem[] = [];
 
 export const ONB: OnboardingSlide[] = [
   { emoji: '🧺', title: 'Everything in your kitchen, in one place', body: 'Track what you have across the fridge, freezer, pantry and counter — so you always know what’s on hand.', cta: 'Next' },
