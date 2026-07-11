@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#2C5E3F"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pantry.app"
@@ -26,6 +28,12 @@
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "54752974-ef2f-4d60-891b-0220a5203b63"
+      }
+    },
+    "owner": "sunilkks0507"
   }
 }
