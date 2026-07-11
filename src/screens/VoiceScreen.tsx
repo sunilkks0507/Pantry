@@ -131,7 +131,7 @@ function VoiceRecorder({
 
   const analyse = async () => {
     const key = localKey.trim();
-    if (!key) { Alert.alert('API key required', 'Enter your Anthropic API key to use AI voice parsing.'); return; }
+    if (!key) { Alert.alert('API key required', 'Enter your Google AI (Gemini) key to use AI voice parsing.'); return; }
     if (!transcript.trim()) { Alert.alert('No speech detected', 'Please record something first.'); return; }
     setLoading(true);
     try {
@@ -139,7 +139,7 @@ function VoiceRecorder({
       onApiKeyChange(key);
       const items = await parseItemsFromTranscript(transcript, key);
       if (items.length === 0) {
-        Alert.alert('No items found', "Claude couldn't find any food items in what you said. Try again and mention specific items.");
+        Alert.alert('No items found', "Gemini couldn't find any food items in what you said. Try again and mention specific items.");
       } else {
         setParsed(items);
         const sel: Record<number, boolean> = {};
@@ -168,11 +168,11 @@ function VoiceRecorder({
 
       {keyVisible ? (
         <View style={styles.apiCard}>
-          <Text style={styles.apiLabel}>🔑 Anthropic API key</Text>
+          <Text style={styles.apiLabel}>🔑 Gemini API key</Text>
           <TextInput
             value={localKey}
             onChangeText={setLocalKey}
-            placeholder="sk-ant-..."
+            placeholder="AIza..."
             placeholderTextColor="#9AA290"
             style={styles.apiInput}
             secureTextEntry
@@ -221,14 +221,14 @@ function VoiceRecorder({
 
       {transcript.length > 0 && !loading && parsed.length === 0 && (
         <TouchableOpacity style={styles.analyzeBtn} onPress={analyse} activeOpacity={0.85}>
-          <Text style={styles.analyzeBtnText}>✨ Parse with Claude AI</Text>
+          <Text style={styles.analyzeBtnText}>✨ Parse with Gemini</Text>
         </TouchableOpacity>
       )}
 
       {loading && (
         <View style={styles.loadingBox}>
           <ActivityIndicator size="large" color={C.green} />
-          <Text style={styles.loadingText}>Claude is parsing your items…</Text>
+          <Text style={styles.loadingText}>Gemini is parsing your items…</Text>
         </View>
       )}
 

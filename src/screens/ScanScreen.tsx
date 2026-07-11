@@ -87,7 +87,7 @@ export default function ScanScreen({ onBack, onSave, apiKey, onApiKeyChange }: P
 
   const analyze = async () => {
     const key = localKey.trim();
-    if (!key) { Alert.alert('API key required', 'Enter your Anthropic API key to use AI scanning.'); return; }
+    if (!key) { Alert.alert('API key required', 'Enter your Google AI (Gemini) key to use AI scanning.'); return; }
     if (!imageBase64) { Alert.alert('No image', 'Please pick or capture an image first.'); return; }
     setLoading(true);
     try {
@@ -95,7 +95,7 @@ export default function ScanScreen({ onBack, onSave, apiKey, onApiKeyChange }: P
       onApiKeyChange(key);
       const items = await parseItemsFromImage(imageBase64, imageMime, key, mode);
       if (items.length === 0) {
-        Alert.alert('No items found', 'Claude could not detect any food items. Try a clearer photo or receipt.');
+        Alert.alert('No items found', 'Gemini could not detect any food items. Try a clearer photo or receipt.');
       } else {
         setParsed(items);
         const sel: Record<number, boolean> = {};
@@ -177,11 +177,11 @@ export default function ScanScreen({ onBack, onSave, apiKey, onApiKeyChange }: P
 
           {keyVisible ? (
             <View style={styles.apiCard}>
-              <Text style={styles.apiLabel}>🔑 Anthropic API key</Text>
+              <Text style={styles.apiLabel}>🔑 Gemini API key</Text>
               <TextInput
                 value={localKey}
                 onChangeText={setLocalKey}
-                placeholder="sk-ant-..."
+                placeholder="AIza..."
                 placeholderTextColor="#9AA290"
                 style={styles.apiInput}
                 secureTextEntry
@@ -239,7 +239,7 @@ export default function ScanScreen({ onBack, onSave, apiKey, onApiKeyChange }: P
 
             <View style={styles.captionBox}>
               <Text style={styles.captionTitle}>
-                {loading ? 'Claude is reading your image…' : 'Hold steady — reading ' + mode}
+                {loading ? 'Gemini is reading your image…' : 'Hold steady — reading ' + mode}
               </Text>
               <Text style={styles.captionSub}>We'll pull item names, prices, store & date automatically.</Text>
               {loading ? (

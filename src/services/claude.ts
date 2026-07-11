@@ -1,8 +1,12 @@
 import { ZoneKey } from '../theme';
 import { GroceryItem, Recipe } from '../types';
 
-const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-haiku-4-5-20251001';
+// Google Gemini (Google AI Studio) — free-tier API. Get a key at
+// https://aistudio.google.com/app/apikey (looks like "AIza...").
+const MODEL = 'gemini-2.5-flash';
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+
+type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
 
 export interface ParsedItem {
   name: string;
@@ -35,22 +39,27 @@ const ITEM_SCHEMA = `For each item return:
 
 Return ONLY a valid JSON array. If no food items found, return [].`;
 
-async function callClaude(apiKey: string, messages: object[], maxTokens = 1024): Promise<string> {
+async function callGemini(apiKey: string, parts: GeminiPart[], maxTokens = 1024): Promise<string> {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
+      'x-goog-api-key': apiKey,
     },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, messages }),
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { maxOutputTokens: maxTokens, responseMimeType: 'application/json' },
+    }),
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Claude API error ${res.status}: ${err}`);
+    throw new Error(`Gemini API error ${res.status}: ${err}`);
   }
   const data = await res.json();
-  return data.content[0].text as string;
+  const out = (data?.candidates?.[0]?.content?.parts || [])
+    .map((p: any) => p?.text || '')
+    .join('');
+  return out as string;
 }
 
 function parseJSON(text: string): ParsedItem[] {
@@ -71,20 +80,9 @@ export async function parseItemsFromImage(
   const modeHint = mode === 'receipt'
     ? 'This is a store receipt. Extract every purchased grocery/food line item, along with its price and the store name/date if printed on the receipt.'
     : 'This is a photo of a food item or its packaging label. Extract the food item(s) shown.';
-  const text = await callClaude(apiKey, [
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: mimeType, data: base64 },
-        },
-        {
-          type: 'text',
-          text: `You are a pantry tracker. ${modeHint}\n\n${ITEM_SCHEMA}`,
-        },
-      ],
-    },
+  const text = await callGemini(apiKey, [
+    { text: `You are a pantry tracker. ${modeHint}\n\n${ITEM_SCHEMA}` },
+    { inline_data: { mime_type: mimeType, data: base64 } },
   ]);
   return parseJSON(text);
 }
@@ -93,11 +91,8 @@ export async function parseItemsFromTranscript(
   transcript: string,
   apiKey: string
 ): Promise<ParsedItem[]> {
-  const text = await callClaude(apiKey, [
-    {
-      role: 'user',
-      content: `You are a pantry tracker. The user said: "${transcript}"\n\nExtract any grocery/food items mentioned.\n\n${ITEM_SCHEMA}`,
-    },
+  const text = await callGemini(apiKey, [
+    { text: `You are a pantry tracker. The user said: "${transcript}"\n\nExtract any grocery/food items mentioned.\n\n${ITEM_SCHEMA}` },
   ]);
   return parseJSON(text);
 }
@@ -170,7 +165,7 @@ For each recipe return an object with these exact fields:
 
 Return ONLY a valid JSON array of the recipe objects, no prose.`;
 
-  const text = await callClaude(apiKey, [{ role: 'user', content: prompt }], 3072);
+  const text = await callGemini(apiKey, [{ text: prompt }], 3072);
   let raw: RawRecipe[] = [];
   try {
     const m = text.match(/\[[\s\S]*\]/);
