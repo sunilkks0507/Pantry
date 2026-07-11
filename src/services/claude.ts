@@ -3,7 +3,7 @@ import { GroceryItem, Recipe } from '../types';
 
 // Google Gemini (Google AI Studio) — free-tier API. Get a key at
 // https://aistudio.google.com/app/apikey (looks like "AIza...").
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-3.5-flash';
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
