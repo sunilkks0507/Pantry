@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Alert } from 'react-native';
 import { C, fonts, ZONES, ZoneKey, statusOf, money } from '../theme';
 import { GroceryItem } from '../types';
+import QtyStepper from '../components/QtyStepper';
 
 type Tab = { key: string; label: string; icon: string; count: number; color?: string; bg?: string };
 
@@ -9,11 +10,15 @@ export default function InventoryScreen({
   items,
   onOpenItem,
   onGoAdd,
+  onChangeQty,
+  onRemove,
   onComingSoon,
 }: {
   items: GroceryItem[];
   onOpenItem: (it: GroceryItem) => void;
   onGoAdd: () => void;
+  onChangeQty: (it: GroceryItem, delta: number) => void;
+  onRemove: (id: string) => void;
   onComingSoon: () => void;
 }) {
   const [zone, setZone] = useState<string>('all');
@@ -34,6 +39,13 @@ export default function InventoryScreen({
   const list = items.filter(
     (i) => (zone === 'all' || i.zone === zone) && i.name.toLowerCase().includes(q.toLowerCase())
   );
+
+  const confirmRemove = (it: GroceryItem) => {
+    Alert.alert('Remove item', `Remove "${it.name}" from your pantry?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onRemove(it.id) },
+    ]);
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -97,21 +109,32 @@ export default function InventoryScreen({
           showsVerticalScrollIndicator={false}
           renderItem={({ item: it }) => {
             const st = statusOf(it.days);
+            const low = it.qty < (it.threshold ?? 1);
             return (
-              <TouchableOpacity onPress={() => onOpenItem(it)} style={styles.row} activeOpacity={0.85}>
-                <View style={[styles.rowIcon, { backgroundColor: ZONES[it.zone]?.bg || '#F0ECE0' }]}>
-                  <Text style={{ fontSize: 26 }}>{it.emoji}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowName}>{it.name}</Text>
-                  <Text style={styles.rowMeta}>{it.qty} {it.unit} · {it.spot}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 5 }}>
-                  <View style={[styles.statusPill, { backgroundColor: st.bg }]}>
-                    <View style={[styles.statusDot, { backgroundColor: st.dot }]} />
-                    <Text style={[styles.statusLabel, { color: st.color }]}>{st.label}</Text>
+              <TouchableOpacity onPress={() => onOpenItem(it)} onLongPress={() => confirmRemove(it)} style={styles.row} activeOpacity={0.85}>
+                <View style={styles.rowTop}>
+                  <View style={[styles.rowIcon, { backgroundColor: ZONES[it.zone]?.bg || '#F0ECE0' }]}>
+                    <Text style={{ fontSize: 26 }}>{it.emoji}</Text>
                   </View>
-                  <Text style={styles.price}>{money(it.price)}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowName}>{it.name}</Text>
+                    <Text style={styles.rowMeta}>
+                      {it.cat} · {it.spot}
+                      {low ? '  · ' : ''}
+                      {low ? <Text style={styles.lowText}>low stock</Text> : null}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 5 }}>
+                    <View style={[styles.statusPill, { backgroundColor: st.bg }]}>
+                      <View style={[styles.statusDot, { backgroundColor: st.dot }]} />
+                      <Text style={[styles.statusLabel, { color: st.color }]}>{st.label}</Text>
+                    </View>
+                    <Text style={styles.price}>{money(it.price)}</Text>
+                  </View>
+                </View>
+                <View style={styles.rowBottom}>
+                  <QtyStepper qty={it.qty} unit={it.unit} onDec={() => onChangeQty(it, -1)} onInc={() => onChangeQty(it, 1)} size="sm" />
+                  <Text style={styles.holdHint}>Hold to remove</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -135,10 +158,14 @@ const styles = StyleSheet.create({
   tabLabel: { fontFamily: fonts.body700, fontSize: 13 },
   tabCount: { fontFamily: fonts.body700, fontSize: 13, opacity: 0.6 },
   list: { padding: 20, paddingBottom: 130, gap: 10 },
-  row: { backgroundColor: '#fff', borderWidth: 1, borderColor: C.border, borderRadius: 18, padding: 13, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 10 },
+  row: { backgroundColor: '#fff', borderWidth: 1, borderColor: C.border, borderRadius: 18, padding: 13, paddingHorizontal: 14, marginBottom: 10 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 13 },
   rowIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   rowName: { fontFamily: fonts.body700, fontSize: 15, color: C.text },
   rowMeta: { fontSize: 12, color: C.muted, fontFamily: fonts.body500, marginTop: 2 },
+  lowText: { color: '#9A6713', fontFamily: fonts.body700 },
+  rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F4EFE3' },
+  holdHint: { fontSize: 11, color: '#B7BCAE', fontFamily: fonts.body500 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 9 },
   statusDot: { width: 5, height: 5, borderRadius: 3 },
   statusLabel: { fontFamily: fonts.body700, fontSize: 11 },

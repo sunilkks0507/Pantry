@@ -22,6 +22,7 @@ import { C, NAV_SCREENS } from './src/theme';
 import { GroceryItem, Recipe, Screen, ShoppingItem } from './src/types';
 import { RECIPES, SHOPPING } from './src/data';
 import { loadItems, saveItems, loadCart, saveCart, hasOnboarded, setOnboarded, loadApiKey, saveApiKey, loadProfileName, saveProfileName, loadShopping, saveShopping } from './src/storage';
+import { suggestRecipesFromPantry } from './src/services/claude';
 
 import BottomNav from './src/components/BottomNav';
 import ComingSoonModal from './src/components/ComingSoonModal';
@@ -67,6 +68,9 @@ export default function App() {
   const [apiKey, setApiKey] = useState('');
   const [profileName, setProfileName] = useState('');
   const [shopping, setShopping] = useState<ShoppingItem[]>(SHOPPING);
+  const [aiRecipes, setAiRecipes] = useState<Recipe[]>([]);
+  const [recipesLoading, setRecipesLoading] = useState(false);
+  const [recipesError, setRecipesError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -108,6 +112,21 @@ export default function App() {
 
   const openItem = (it: GroceryItem) => { setActiveItem(it); push('item'); };
   const openRecipe = (r: Recipe) => { setActiveRecipe(r); push('recipeDetail'); };
+
+  const generateRecipes = useCallback(async () => {
+    if (!apiKey || items.length === 0) return;
+    setRecipesLoading(true);
+    setRecipesError(null);
+    try {
+      const rs = await suggestRecipesFromPantry(items, apiKey);
+      if (rs.length === 0) setRecipesError('No recipes came back. Try again.');
+      setAiRecipes(rs);
+    } catch (e: any) {
+      setRecipesError(e?.message || 'Could not generate recipes. Check your API key and try again.');
+    } finally {
+      setRecipesLoading(false);
+    }
+  }, [apiKey, items]);
   const toggleCart = (id: string) => setCart((c) => ({ ...c, [id]: !c[id] }));
   const finishOnboarding = () => { setOnboarded(); go('home'); };
 
@@ -139,40 +158,68 @@ export default function App() {
   };
 
   const addItemToShopping = (it: GroceryItem) => {
-    addToShopping([{ id: 'sh-' + it.id + '-' + Date.now(), name: it.name, emoji: it.emoji, note: 'Added from pantry', lastPrice: it.price, lastStore: it.store }]);
+    addToShopping([{ id: 'sh-' + it.id + '-' + Date.now(), name: it.name, emoji: it.emoji, note: 'Added from pantry', lastPrice: it.price, lastStore: it.store, qty: 1, unit: it.unit }]);
     push('list');
   };
 
   const addMissingToShopping = (names: string[]) => {
     addToShopping(names.map((n, i) => ({
       id: 'sh-' + n.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now() + '-' + i,
-      name: n, emoji: '🛒', note: 'Need for recipe', lastPrice: 0, lastStore: '',
+      name: n, emoji: '🛒', note: 'Need for recipe', lastPrice: 0, lastStore: '', qty: 1, unit: 'no',
     })));
     push('list');
   };
 
-  const addShoppingByName = (name: string) => {
+  const addShoppingItem = (name: string, qty: number, unit: string) => {
     const n = name.trim();
     if (!n) return;
-    addToShopping([{ id: 'sh-manual-' + Date.now(), name: n, emoji: '🛒', note: 'Added manually', lastPrice: 0, lastStore: '' }]);
+    addToShopping([{ id: 'sh-manual-' + Date.now(), name: n, emoji: '🛒', note: 'Added manually', lastPrice: 0, lastStore: '', qty: Math.max(1, qty), unit }]);
   };
 
-  // Adjust a pantry item's quantity. When it reaches 0 the item leaves the
-  // pantry and is moved onto the shopping list to be re-bought.
+  // Adjust a pantry item's quantity. The item stays in the pantry; when its
+  // quantity drops below its low-stock threshold it is added to the shopping list.
   const changeItemQty = (item: GroceryItem, delta: number) => {
     const newQty = Math.max(0, Math.round((item.qty + delta) * 100) / 100);
-    if (newQty <= 0) {
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
+    const updated = { ...item, qty: newQty };
+    setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+    setActiveItem((cur) => (cur && cur.id === item.id ? updated : cur));
+    const threshold = item.threshold ?? 1;
+    if (newQty < threshold) {
       addToShopping([{
         id: 'sh-' + item.id + '-' + Date.now(),
-        name: item.name, emoji: item.emoji, note: 'Ran out', lastPrice: item.price, lastStore: item.store,
+        name: item.name, emoji: item.emoji, note: 'Running low', lastPrice: item.price, lastStore: item.store, qty: 1, unit: item.unit,
       }]);
-      back();
-    } else {
-      const updated = { ...item, qty: newQty };
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
-      setActiveItem(updated);
     }
+  };
+
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setActiveItem((cur) => (cur && cur.id === id ? null : cur));
+    if (screen === 'item') back();
+  };
+
+  const updateItemUnit = (id: string, unit: string) => {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, unit } : i)));
+    setActiveItem((cur) => (cur && cur.id === id ? { ...cur, unit } : cur));
+  };
+
+  const updateItemThreshold = (id: string, threshold: number) => {
+    const t = Math.max(0, Math.round(threshold));
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, threshold: t } : i)));
+    setActiveItem((cur) => (cur && cur.id === id ? { ...cur, threshold: t } : cur));
+  };
+
+  const changeShoppingQty = (id: string, delta: number) => {
+    setShopping((prev) => prev.map((s) => (s.id === id ? { ...s, qty: Math.max(1, Math.round(((s.qty ?? 1) + delta) * 100) / 100) } : s)));
+  };
+
+  const updateShoppingUnit = (id: string, unit: string) => {
+    setShopping((prev) => prev.map((s) => (s.id === id ? { ...s, unit } : s)));
+  };
+
+  const removeShoppingItem = (id: string) => {
+    setShopping((prev) => prev.filter((s) => s.id !== id));
+    setCart((c) => { const n = { ...c }; delete n[id]; return n; });
   };
 
   if (!fontsLoaded || !ready) {
@@ -213,6 +260,8 @@ export default function App() {
               items={items}
               onOpenItem={openItem}
               onGoAdd={openAddSheet}
+              onChangeQty={changeItemQty}
+              onRemove={removeItem}
               onComingSoon={() => {}}
             />
           )}
@@ -225,6 +274,9 @@ export default function App() {
               onAddToShoppingList={() => addItemToShopping(activeItem)}
               onFindRecipes={() => push('recipes')}
               onChangeQty={(delta) => changeItemQty(activeItem, delta)}
+              onChangeUnit={(u) => updateItemUnit(activeItem.id, u)}
+              onChangeThreshold={(t) => updateItemThreshold(activeItem.id, t)}
+              onRemove={() => removeItem(activeItem.id)}
             />
           )}
           {screen === 'expiry' && (
@@ -236,12 +288,31 @@ export default function App() {
               onGoRecipes={() => go('recipes')}
             />
           )}
-          {screen === 'recipes' && <RecipesScreen items={items} onOpenRecipe={openRecipe} />}
+          {screen === 'recipes' && (
+            <RecipesScreen
+              items={items}
+              recipes={aiRecipes}
+              loading={recipesLoading}
+              error={recipesError}
+              onGenerate={generateRecipes}
+              onOpenRecipe={openRecipe}
+              apiKey={apiKey}
+              onApiKeyChange={handleUpdateApiKey}
+            />
+          )}
           {screen === 'recipeDetail' && (
             <RecipeDetailScreen recipe={activeRecipe} onBack={back} onAddMissingToList={addMissingToShopping} />
           )}
           {screen === 'list' && (
-            <ShoppingListScreen shopping={shopping} cart={cart} onToggle={toggleCart} onManualAdd={addShoppingByName} />
+            <ShoppingListScreen
+              shopping={shopping}
+              cart={cart}
+              onToggle={toggleCart}
+              onManualAdd={addShoppingItem}
+              onChangeQty={changeShoppingQty}
+              onChangeUnit={updateShoppingUnit}
+              onRemove={removeShoppingItem}
+            />
           )}
           {screen === 'add' && <AddItemScreen onBack={back} onSave={addItem} onGoScan={() => push('scan')} />}
           {screen === 'scan' && (

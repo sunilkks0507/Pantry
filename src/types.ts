@@ -22,6 +22,7 @@ export interface GroceryItem {
   loc: string;
   tip: string;
   hist: PriceHistoryEntry[];
+  threshold?: number; // low-stock level; below this the item is added to the shopping list (default 1)
 }
 
 export interface Recipe {
@@ -46,6 +47,8 @@ export interface ShoppingItem {
   note: string;
   lastPrice: number;
   lastStore: string;
+  qty?: number; // how many to buy (default 1)
+  unit?: string; // measuring unit, e.g. kg, g, no (default 'no')
 }
 
 export interface OnboardingSlide {

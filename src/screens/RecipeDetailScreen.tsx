@@ -19,7 +19,10 @@ export default function RecipeDetailScreen({
     { icon: '🔥', val: recipe.calories + ' cal' },
     { icon: '🍽', val: recipe.servings + ' serv' },
   ];
-  const idx = Math.max(0, RECIPES.findIndex((r) => r.id === recipe.id));
+  // AI-generated recipes aren't in the static list; fall back to a stable
+  // per-recipe colour derived from the id so each still gets a varied hero.
+  const found = RECIPES.findIndex((r) => r.id === recipe.id);
+  const idx = found >= 0 ? found : recipe.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const tileBg = TILE_BG[idx % TILE_BG.length];
   const missing = recipe.ingredients.filter(([, have]) => !have).map(([name]) => name);
 

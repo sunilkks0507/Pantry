@@ -60,6 +60,9 @@ export const STORE_PRICE_FACTOR: Record<string, number> = {
 
 export const NAV_SCREENS = ['home', 'inventory', 'recipes', 'list'];
 
+// Measuring units for grocery / home items. 'no' = count (number of items).
+export const UNITS = ['no', 'kg', 'g', 'L', 'ml', 'dozen', 'pack', 'bag', 'bottle', 'can', 'box', 'loaf', 'meter'];
+
 export function money(n: number) {
   const v = Number(n);
   // Whole rupees render without paise; fractional values (e.g. computed averages)

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Modal, Pressable } from 'react-native';
-import { C, fonts, ZONES, ZoneKey } from '../theme';
+import { C, fonts, ZONES, ZoneKey, UNITS } from '../theme';
 import { GroceryItem } from '../types';
 import BackButton from '../components/BackButton';
 
@@ -108,7 +108,8 @@ export default function AddItemScreen({
   const [zone, setZone] = useState<ZoneKey>('fridge');
   const [spot, setSpot] = useState('');
   const [qty, setQty] = useState('1');
-  const [unit, setUnit] = useState('ct');
+  const [unit, setUnit] = useState('no');
+  const [threshold, setThreshold] = useState('1');
   const [expiryM, setExpiryM] = useState(inSevenDays.getMonth());
   const [expiryD, setExpiryD] = useState(inSevenDays.getDate());
   const [purchaseM, setPurchaseM] = useState(now.getMonth());
@@ -126,7 +127,7 @@ export default function AddItemScreen({
       emoji: EMOJI_BY_ZONE[zone],
       cat,
       qty: Number(qty) || 1,
-      unit: unit || 'ct',
+      unit: unit || 'no',
       zone,
       spot: spot.trim() || ZONES[zone].label,
       days: daysUntil(expiryM, expiryD),
@@ -136,6 +137,7 @@ export default function AddItemScreen({
       loc: '',
       tip: 'Keep it in the ' + ZONES[zone].label.toLowerCase() + ' and check on it before it expires.',
       hist: [],
+      threshold: Math.max(0, Math.round(Number(threshold) || 1)),
     };
     onSave(item);
   };
@@ -196,11 +198,28 @@ export default function AddItemScreen({
             </View>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Unit</Text>
+            <Text style={styles.label}>Low-stock at</Text>
             <View style={styles.inputWrap}>
-              <TextInput value={unit} onChangeText={setUnit} placeholder="ct, lb, bag..." placeholderTextColor="#9AA290" style={styles.input} />
+              <TextInput value={threshold} onChangeText={setThreshold} keyboardType="numeric" style={styles.input} />
             </View>
           </View>
+        </View>
+
+        <View>
+          <Text style={styles.label}>Unit</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {UNITS.map((u) => (
+              <TouchableOpacity
+                key={u}
+                onPress={() => setUnit(u)}
+                style={[styles.catChip, unit === u && styles.catChipActive]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.catChipText, unit === u && styles.catChipTextActive]}>{u}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <Text style={styles.fieldHint}>Below {Number(threshold) || 1} {unit}, we'll add it to your shopping list.</Text>
         </View>
 
         <View>
@@ -280,6 +299,7 @@ const styles = StyleSheet.create({
   scanChevron: { color: '#D88B6E', fontSize: 20 },
   form: { paddingHorizontal: 20, paddingTop: 0, gap: 14 },
   label: { fontSize: 13, fontFamily: fonts.body700, color: C.muted, marginBottom: 6 },
+  fieldHint: { fontSize: 11.5, color: C.muted, fontFamily: fonts.body500, marginTop: 8 },
   inputWrap: { backgroundColor: '#fff', borderWidth: 1, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, height: 50, justifyContent: 'center' },
   input: { fontSize: 15, fontFamily: fonts.body400, color: C.text },
   rowFields: { flexDirection: 'row', gap: 10 },

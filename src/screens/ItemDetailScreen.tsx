@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { C, fonts, ZONES, statusOf, expiresText, money } from '../theme';
 import { GroceryItem } from '../types';
 import BackButton from '../components/BackButton';
+import QtyStepper from '../components/QtyStepper';
+import UnitPicker from '../components/UnitPicker';
 
 export default function ItemDetailScreen({
   item,
@@ -12,6 +14,9 @@ export default function ItemDetailScreen({
   onAddToShoppingList,
   onFindRecipes,
   onChangeQty,
+  onChangeUnit,
+  onChangeThreshold,
+  onRemove,
 }: {
   item: GroceryItem;
   onBack: () => void;
@@ -20,10 +25,22 @@ export default function ItemDetailScreen({
   onAddToShoppingList: () => void;
   onFindRecipes: () => void;
   onChangeQty: (delta: number) => void;
+  onChangeUnit: (unit: string) => void;
+  onChangeThreshold: (threshold: number) => void;
+  onRemove: () => void;
 }) {
   const st = statusOf(item.days);
   const zone = ZONES[item.zone];
   const lowest = item.hist.length > 0 ? money(Math.min(...item.hist.map((h) => h.price))) : money(item.price);
+  const threshold = item.threshold ?? 1;
+  const [unitOpen, setUnitOpen] = useState(false);
+
+  const confirmRemove = () => {
+    Alert.alert('Remove item', `Remove "${item.name}" from your pantry?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: onRemove },
+    ]);
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -59,14 +76,22 @@ export default function ItemDetailScreen({
       <View style={styles.qtyCard}>
         <View style={{ flex: 1 }}>
           <Text style={styles.qtyLabel}>Quantity</Text>
-          <Text style={styles.qtyHint}>Reaches 0 → moves to shopping list</Text>
+          <Text style={styles.qtyHint}>Tap the amount to change the unit</Text>
+        </View>
+        <QtyStepper qty={item.qty} unit={item.unit} onDec={() => onChangeQty(-1)} onInc={() => onChangeQty(1)} onUnitPress={() => setUnitOpen(true)} />
+      </View>
+
+      <View style={styles.qtyCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.qtyLabel}>Low-stock alert</Text>
+          <Text style={styles.qtyHint}>Below {threshold} {item.unit} → added to shopping list</Text>
         </View>
         <View style={styles.stepper}>
-          <TouchableOpacity onPress={() => onChangeQty(-1)} style={styles.stepBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => onChangeThreshold(threshold - 1)} style={styles.stepBtn} activeOpacity={0.7}>
             <Text style={styles.stepBtnText}>−</Text>
           </TouchableOpacity>
-          <Text style={styles.qtyValue}>{item.qty} {item.unit}</Text>
-          <TouchableOpacity onPress={() => onChangeQty(1)} style={styles.stepBtn} activeOpacity={0.7}>
+          <Text style={styles.qtyValue}>{threshold} {item.unit}</Text>
+          <TouchableOpacity onPress={() => onChangeThreshold(threshold + 1)} style={styles.stepBtn} activeOpacity={0.7}>
             <Text style={styles.stepBtnText}>+</Text>
           </TouchableOpacity>
         </View>
@@ -119,6 +144,12 @@ export default function ItemDetailScreen({
           <Text style={styles.fillBtnText}>Find recipes</Text>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity onPress={confirmRemove} style={styles.removeBtn} activeOpacity={0.8}>
+        <Text style={styles.removeBtnText}>Remove from pantry</Text>
+      </TouchableOpacity>
+
+      <UnitPicker visible={unitOpen} value={item.unit} onSelect={onChangeUnit} onClose={() => setUnitOpen(false)} />
     </ScrollView>
   );
 }
@@ -165,4 +196,6 @@ const styles = StyleSheet.create({
   outlineBtnText: { color: C.green, fontFamily: fonts.display700, fontSize: 14.5 },
   fillBtn: { flex: 1, height: 52, borderRadius: 16, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
   fillBtnText: { color: '#F4EFE3', fontFamily: fonts.display700, fontSize: 14.5 },
+  removeBtn: { marginHorizontal: 20, marginTop: 12, height: 50, borderRadius: 16, borderWidth: 1.5, borderColor: '#E7C3BA', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  removeBtnText: { color: C.red, fontFamily: fonts.body700, fontSize: 14.5 },
 });
