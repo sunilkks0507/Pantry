@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GroceryItem, ShoppingItem } from './types';
+import { migrateItem } from './items';
 
 const ITEMS_KEY = '@pantry/items';
 const CART_KEY = '@pantry/cart';
@@ -11,7 +12,10 @@ const SHOPPING_KEY = '@pantry/shopping';
 export async function loadItems(): Promise<GroceryItem[]> {
   try {
     const raw = await AsyncStorage.getItem(ITEMS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((it) => migrateItem(it));
+    }
   } catch {}
   return [];
 }

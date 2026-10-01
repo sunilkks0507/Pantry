@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { C, fonts, ZONES, ZoneKey, money } from '../theme';
+import { addDays, monthDayToPastISO, todayISO } from '../dates';
+import { withLiveDates } from '../items';
 import { GroceryItem } from '../types';
 import { ParsedItem, parseItemsFromImage } from '../services/claude';
 import { saveApiKey } from '../storage';
@@ -18,7 +20,10 @@ interface Props {
 }
 
 function parsedToGrocery(p: ParsedItem): GroceryItem {
-  return {
+  // Receipt dates come back year-less ("Jun 23"); expiry counts from purchase.
+  const today = todayISO();
+  const boughtOn = (p.date && monthDayToPastISO(p.date, today)) || today;
+  return withLiveDates({
     id: p.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now() + '-' + Math.random(),
     name: p.name,
     emoji: p.emoji || '🛒',
@@ -27,14 +32,14 @@ function parsedToGrocery(p: ParsedItem): GroceryItem {
     unit: p.unit || 'ct',
     zone: (p.zone as ZoneKey) || 'pantry',
     spot: p.spot || 'Pantry shelf',
-    days: p.days ?? 7,
-    bought: p.date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    boughtOn,
+    expiresOn: addDays(boughtOn, Number.isFinite(p.days) ? p.days : 7),
     price: p.price || 0,
     store: p.store || '—',
     loc: '',
     tip: p.tip || '',
     hist: [],
-  };
+  });
 }
 
 export default function ScanScreen({ onBack, onSave, apiKey, onApiKeyChange }: Props) {

@@ -4,21 +4,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { C, fonts, ZONES, ZoneKey, statusOf, money } from '../theme';
 import { GroceryItem, Recipe } from '../types';
 import { RECIPES } from '../data';
+import { daysBetween, todayISO } from '../dates';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function boughtTime(bought: string): number {
-  const [mon, day] = bought.split(' ');
-  const m = MONTHS.indexOf(mon);
-  if (m < 0 || !day) return 0;
-  return new Date(2000, m, parseInt(day, 10)).getTime();
-}
+// Spend on items bought in the last 7 days, today included.
 function weekSpendOf(items: GroceryItem[]): number {
-  if (items.length === 0) return 0;
-  const latest = Math.max(...items.map((i) => boughtTime(i.bought)));
+  const today = todayISO();
   return items
     .filter((i) => {
-      const diff = latest - boughtTime(i.bought);
-      return diff >= 0 && diff <= 7 * 86400000;
+      const ago = daysBetween(i.boughtOn, today);
+      return ago >= 0 && ago < 7;
     })
     .reduce((sum, i) => sum + i.price, 0);
 }

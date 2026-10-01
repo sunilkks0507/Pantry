@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, StyleSheet, ActivityIndicator, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -23,6 +23,8 @@ import { GroceryItem, Recipe, Screen, ShoppingItem } from './src/types';
 import { RECIPES, SHOPPING } from './src/data';
 import { loadItems, saveItems, loadCart, saveCart, hasOnboarded, setOnboarded, loadApiKey, saveApiKey, loadProfileName, saveProfileName, loadShopping, saveShopping } from './src/storage';
 import { suggestRecipesFromPantry } from './src/services/claude';
+import { todayISO } from './src/dates';
+import { withLiveDates } from './src/items';
 
 import BottomNav from './src/components/BottomNav';
 import ComingSoonModal from './src/components/ComingSoonModal';
@@ -59,8 +61,9 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>('home');
   const [onbIdx, setOnbIdx] = useState(0);
-  const [items, setItems] = useState<GroceryItem[]>([]);
-  const [activeItem, setActiveItem] = useState<GroceryItem | null>(null);
+  const [storedItems, setItems] = useState<GroceryItem[]>([]);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [today, setToday] = useState(todayISO);
   const [activeRecipe, setActiveRecipe] = useState<Recipe>(RECIPES[0]);
   const [cart, setCart] = useState<Record<string, boolean>>({});
   const [history, setHistory] = useState<Screen[]>([]);
@@ -74,10 +77,10 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [storedItems, storedCart, onboarded, storedKey, storedName, storedShopping] = await Promise.all([
+      const [loadedItems, storedCart, onboarded, storedKey, storedName, storedShopping] = await Promise.all([
         loadItems(), loadCart(), hasOnboarded(), loadApiKey(), loadProfileName(), loadShopping(),
       ]);
-      setItems(storedItems);
+      setItems(loadedItems);
       setCart(storedCart);
       setApiKey(storedKey);
       setProfileName(storedName);
@@ -87,7 +90,19 @@ export default function App() {
     })();
   }, []);
 
-  useEffect(() => { if (ready) saveItems(items); }, [items, ready]);
+  // Keep `today` current so "days left" ticks over at midnight and when the
+  // app returns from the background on a later day.
+  useEffect(() => {
+    const refresh = () => setToday((cur) => { const t = todayISO(); return t === cur ? cur : t; });
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') refresh(); });
+    const timer = setInterval(refresh, 60000);
+    return () => { sub.remove(); clearInterval(timer); };
+  }, []);
+
+  const items = useMemo(() => storedItems.map((i) => withLiveDates(i, today)), [storedItems, today]);
+  const activeItem = useMemo(() => items.find((i) => i.id === activeItemId) ?? null, [items, activeItemId]);
+
+  useEffect(() => { if (ready) saveItems(storedItems); }, [storedItems, ready]);
   useEffect(() => { if (ready) saveCart(cart); }, [cart, ready]);
   useEffect(() => { if (ready) saveShopping(shopping); }, [shopping, ready]);
 
@@ -110,7 +125,7 @@ export default function App() {
     });
   }, []);
 
-  const openItem = (it: GroceryItem) => { setActiveItem(it); push('item'); };
+  const openItem = (it: GroceryItem) => { setActiveItemId(it.id); push('item'); };
   const openRecipe = (r: Recipe) => { setActiveRecipe(r); push('recipeDetail'); };
 
   const generateRecipes = useCallback(async () => {
@@ -182,7 +197,6 @@ export default function App() {
     const newQty = Math.max(0, Math.round((item.qty + delta) * 100) / 100);
     const updated = { ...item, qty: newQty };
     setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
-    setActiveItem((cur) => (cur && cur.id === item.id ? updated : cur));
     const threshold = item.threshold ?? 1;
     if (newQty < threshold) {
       addToShopping([{
@@ -194,19 +208,17 @@ export default function App() {
 
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
-    setActiveItem((cur) => (cur && cur.id === id ? null : cur));
+    setActiveItemId((cur) => (cur === id ? null : cur));
     if (screen === 'item') back();
   };
 
   const updateItemUnit = (id: string, unit: string) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, unit } : i)));
-    setActiveItem((cur) => (cur && cur.id === id ? { ...cur, unit } : cur));
   };
 
   const updateItemThreshold = (id: string, threshold: number) => {
     const t = Math.max(0, Math.round(threshold));
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, threshold: t } : i)));
-    setActiveItem((cur) => (cur && cur.id === id ? { ...cur, threshold: t } : cur));
   };
 
   const changeShoppingQty = (id: string, delta: number) => {
