@@ -27,6 +27,9 @@ import { todayISO } from './src/dates';
 import { withLiveDates } from './src/items';
 import { backTarget, navReducer } from './src/navigation';
 import { Purchase, restock } from './src/restock';
+import { ensureNotificationPermission, setupNotifications, syncExpiryReminders, useLastNotificationResponse } from './src/notifications';
+
+setupNotifications();
 
 import BottomNav from './src/components/BottomNav';
 import ComingSoonModal from './src/components/ComingSoonModal';
@@ -105,6 +108,36 @@ export default function App() {
   const activeItem = useMemo(() => items.find((i) => i.id === activeItemId) ?? null, [items, activeItemId]);
 
   useEffect(() => { if (ready) saveItems(storedItems); }, [storedItems, ready]);
+
+  // Expiry reminders: ask for permission once there's something to remind
+  // about, then keep the scheduled notifications in step with the pantry
+  // (debounced, since quantity steppers fire many quick updates).
+  const askedNotifRef = useRef(false);
+  useEffect(() => {
+    if (!ready || screen === 'onboarding' || storedItems.length === 0) return;
+    const timer = setTimeout(async () => {
+      if (!askedNotifRef.current) {
+        askedNotifRef.current = true;
+        await ensureNotificationPermission();
+      }
+      await syncExpiryReminders(storedItems);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [storedItems, ready, today, screen === 'onboarding']);
+
+  // Tapping a reminder opens the Expiry screen (also when it launched the app).
+  const notifResponse = useLastNotificationResponse();
+  const handledNotifRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready || !notifResponse) return;
+    const id = notifResponse.notification.request.identifier;
+    if (handledNotifRef.current === id) return;
+    handledNotifRef.current = id;
+    if (notifResponse.notification.request.content.data?.screen === 'expiry' && screen !== 'onboarding') {
+      dispatchNav({ type: 'go', screen: 'home' });
+      dispatchNav({ type: 'push', screen: 'expiry' });
+    }
+  }, [notifResponse, ready]);
   useEffect(() => { if (ready) saveCart(cart); }, [cart, ready]);
   useEffect(() => { if (ready) saveShopping(shopping); }, [shopping, ready]);
 
