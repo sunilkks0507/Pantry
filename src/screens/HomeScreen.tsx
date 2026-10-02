@@ -3,22 +3,15 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Modal, TextInput,
 import { LinearGradient } from 'expo-linear-gradient';
 import { C, fonts, ZONES, ZoneKey, statusOf, money } from '../theme';
 import { GroceryItem, Recipe } from '../types';
-import { RECIPES } from '../data';
+import { daysBetween, todayISO } from '../dates';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function boughtTime(bought: string): number {
-  const [mon, day] = bought.split(' ');
-  const m = MONTHS.indexOf(mon);
-  if (m < 0 || !day) return 0;
-  return new Date(2000, m, parseInt(day, 10)).getTime();
-}
+// Spend on items bought in the last 7 days, today included.
 function weekSpendOf(items: GroceryItem[]): number {
-  if (items.length === 0) return 0;
-  const latest = Math.max(...items.map((i) => boughtTime(i.bought)));
+  const today = todayISO();
   return items
     .filter((i) => {
-      const diff = latest - boughtTime(i.bought);
-      return diff >= 0 && diff <= 7 * 86400000;
+      const ago = daysBetween(i.boughtOn, today);
+      return ago >= 0 && ago < 7;
     })
     .reduce((sum, i) => sum + i.price, 0);
 }
@@ -31,6 +24,7 @@ export default function HomeScreen({
   onGoExpiry,
   onGoRecipes,
   onOpenRecipe,
+  recipe,
   onComingSoon,
   onGoAdd,
 }: {
@@ -41,6 +35,7 @@ export default function HomeScreen({
   onGoExpiry: () => void;
   onGoRecipes: () => void;
   onOpenRecipe: (r: Recipe) => void;
+  recipe: Recipe | null; // best match for what's in the pantry, if any
   onComingSoon: () => void;
   onGoAdd: () => void;
 }) {
@@ -53,7 +48,6 @@ export default function HomeScreen({
   items.forEach((i) => {
     zoneCounts[i.zone] = (zoneCounts[i.zone] || 0) + 1;
   });
-  const top = RECIPES[0];
   const isEmpty = items.length === 0;
   const weekSpend = weekSpendOf(items);
   const initial = profileName.trim() ? profileName.trim()[0].toUpperCase() : '👤';
@@ -162,24 +156,30 @@ export default function HomeScreen({
             })}
           </ScrollView>
 
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Cook before it spoils</Text>
-            <TouchableOpacity onPress={onGoRecipes}>
-              <Text style={styles.sectionLink}>More</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity onPress={() => onOpenRecipe(top)} style={styles.recipeCard} activeOpacity={0.85}>
-            <View style={styles.recipeIcon}>
-              <Text style={{ fontSize: 38 }}>{top.emoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.recipeName}>{top.name}</Text>
-              <Text style={styles.recipeMeta}>⏱ {top.time} · 🔥 {top.calories} cal</Text>
-              <View style={styles.usesTag}>
-                <Text style={styles.usesText}>Uses {top.expiringUse}</Text>
+          {recipe && (
+            <>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Cook before it spoils</Text>
+                <TouchableOpacity onPress={onGoRecipes}>
+                  <Text style={styles.sectionLink}>More</Text>
+                </TouchableOpacity>
               </View>
-            </View>
-          </TouchableOpacity>
+              <TouchableOpacity onPress={() => onOpenRecipe(recipe)} style={styles.recipeCard} activeOpacity={0.85}>
+                <View style={styles.recipeIcon}>
+                  <Text style={{ fontSize: 38 }}>{recipe.emoji}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recipeName}>{recipe.name}</Text>
+                  <Text style={styles.recipeMeta}>⏱ {recipe.time} · 🔥 {recipe.calories} cal</Text>
+                  {!!recipe.expiringUse && (
+                    <View style={styles.usesTag}>
+                      <Text style={styles.usesText}>Uses {recipe.expiringUse}</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
         </>
       )}
     </ScrollView>

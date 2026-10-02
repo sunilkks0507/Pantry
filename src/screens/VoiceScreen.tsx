@@ -4,6 +4,8 @@ import {
   ActivityIndicator, TextInput, Alert,
 } from 'react-native';
 import { C, fonts, ZONES, ZoneKey } from '../theme';
+import { addDays, todayISO } from '../dates';
+import { withLiveDates } from '../items';
 import { GroceryItem } from '../types';
 import { ParsedItem, parseItemsFromTranscript } from '../services/claude';
 import { saveApiKey } from '../storage';
@@ -66,7 +68,8 @@ function VoiceUnavailable({ onBack }: { onBack: () => void }) {
 }
 
 function parsedToGrocery(p: ParsedItem): GroceryItem {
-  return {
+  const boughtOn = todayISO();
+  return withLiveDates({
     id: p.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now() + '-' + Math.random(),
     name: p.name,
     emoji: p.emoji || '🛒',
@@ -75,14 +78,14 @@ function parsedToGrocery(p: ParsedItem): GroceryItem {
     unit: p.unit || 'ct',
     zone: (p.zone as ZoneKey) || 'pantry',
     spot: p.spot || 'Pantry shelf',
-    days: p.days ?? 7,
-    bought: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    boughtOn,
+    expiresOn: addDays(boughtOn, Number.isFinite(p.days) ? p.days : 7),
     price: 0,
     store: '—',
     loc: '',
     tip: p.tip || '',
     hist: [],
-  };
+  });
 }
 
 function VoiceRecorder({
@@ -97,6 +100,11 @@ function VoiceRecorder({
   const [parsed, setParsed] = useState<ParsedItem[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
 
+  // Stop the microphone if the user leaves (e.g. Back) while still recording.
+  useEffect(() => () => {
+    try { ExpoSpeechRecognitionModule.abort(); } catch {}
+  }, [ExpoSpeechRecognitionModule]);
+
   useSpeechRecognitionEvent('result', (e) => {
     const text = e.results?.[0]?.transcript || '';
     setTranscript(text);
@@ -108,6 +116,7 @@ function VoiceRecorder({
 
   useSpeechRecognitionEvent('error', (e) => {
     setListening(false);
+    if (e.error === 'aborted') return;
     Alert.alert('Speech error', e.message || 'Could not recognise speech. Please try again.');
   });
 

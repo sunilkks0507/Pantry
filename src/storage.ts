@@ -1,17 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+import { createApiKeyStore, KV } from './apiKeyStore';
 import { GroceryItem, ShoppingItem } from './types';
+import { migrateItem } from './items';
 
 const ITEMS_KEY = '@pantry/items';
 const CART_KEY = '@pantry/cart';
 const ONBOARDED_KEY = '@pantry/onboarded';
-const API_KEY_KEY = '@pantry/apiKey';
 const PROFILE_KEY = '@pantry/profileName';
 const SHOPPING_KEY = '@pantry/shopping';
 
 export async function loadItems(): Promise<GroceryItem[]> {
   try {
     const raw = await AsyncStorage.getItem(ITEMS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((it) => migrateItem(it));
+    }
   } catch {}
   return [];
 }
@@ -50,9 +56,16 @@ export async function setOnboarded() {
   } catch {}
 }
 
+const secureKV: KV | null = Platform.OS === 'web' ? null : {
+  getItem: (k) => SecureStore.getItemAsync(k),
+  setItem: (k, v) => SecureStore.setItemAsync(k, v),
+  removeItem: (k) => SecureStore.deleteItemAsync(k),
+};
+const apiKeyStore = createApiKeyStore(secureKV, AsyncStorage);
+
 export async function loadApiKey(): Promise<string> {
   try {
-    return (await AsyncStorage.getItem(API_KEY_KEY)) || '';
+    return await apiKeyStore.load();
   } catch {
     return '';
   }
@@ -60,7 +73,7 @@ export async function loadApiKey(): Promise<string> {
 
 export async function saveApiKey(key: string) {
   try {
-    await AsyncStorage.setItem(API_KEY_KEY, key);
+    await apiKeyStore.save(key);
   } catch {}
 }
 
