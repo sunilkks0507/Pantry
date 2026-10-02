@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, ActivityIndicator, AppState } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useReducer, useRef } from 'react';
+import { View, StyleSheet, ActivityIndicator, AppState, BackHandler } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -25,6 +25,7 @@ import { loadItems, saveItems, loadCart, saveCart, hasOnboarded, setOnboarded, l
 import { suggestRecipesFromPantry } from './src/services/claude';
 import { todayISO } from './src/dates';
 import { withLiveDates } from './src/items';
+import { backTarget, navReducer } from './src/navigation';
 
 import BottomNav from './src/components/BottomNav';
 import ComingSoonModal from './src/components/ComingSoonModal';
@@ -59,14 +60,14 @@ export default function App() {
   });
 
   const [ready, setReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>('home');
+  const [nav, dispatchNav] = useReducer(navReducer, { screen: 'home', history: [] });
+  const { screen } = nav;
   const [onbIdx, setOnbIdx] = useState(0);
   const [storedItems, setItems] = useState<GroceryItem[]>([]);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [today, setToday] = useState(todayISO);
   const [activeRecipe, setActiveRecipe] = useState<Recipe>(RECIPES[0]);
   const [cart, setCart] = useState<Record<string, boolean>>({});
-  const [history, setHistory] = useState<Screen[]>([]);
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [profileName, setProfileName] = useState('');
@@ -85,7 +86,7 @@ export default function App() {
       setApiKey(storedKey);
       setProfileName(storedName);
       setShopping(storedShopping ?? SHOPPING);
-      setScreen(onboarded ? 'home' : 'onboarding');
+      dispatchNav({ type: 'go', screen: onboarded ? 'home' : 'onboarding' });
       setReady(true);
     })();
   }, []);
@@ -106,23 +107,28 @@ export default function App() {
   useEffect(() => { if (ready) saveCart(cart); }, [cart, ready]);
   useEffect(() => { if (ready) saveShopping(shopping); }, [shopping, ready]);
 
-  const push = useCallback((s: Screen) => {
-    setHistory((h) => [...h, screen]);
-    setScreen(s);
-  }, [screen]);
+  const push = useCallback((s: Screen) => dispatchNav({ type: 'push', screen: s }), []);
+  const go = useCallback((s: Screen) => dispatchNav({ type: 'go', screen: s }), []);
+  const back = useCallback(() => dispatchNav({ type: 'back' }), []);
 
-  const go = useCallback((s: Screen) => {
-    setHistory([]);
-    setScreen(s);
-  }, []);
-
-  const back = useCallback(() => {
-    setHistory((h) => {
-      const copy = [...h];
-      const prev = copy.pop() || 'home';
-      setScreen(prev as Screen);
-      return copy;
+  // Android hardware/gesture Back: step back through the app's own history,
+  // then fall back to Home from other tabs; only leave the app from Home.
+  // (Open modals handle Back themselves via onRequestClose.)
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const onbIdxRef = useRef(onbIdx);
+  onbIdxRef.current = onbIdx;
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navRef.current.screen === 'onboarding' && onbIdxRef.current > 0) {
+        setOnbIdx((i) => Math.max(0, i - 1));
+        return true;
+      }
+      if (!backTarget(navRef.current)) return false;
+      dispatchNav({ type: 'back' });
+      return true;
     });
+    return () => sub.remove();
   }, []);
 
   const openItem = (it: GroceryItem) => { setActiveItemId(it.id); push('item'); };

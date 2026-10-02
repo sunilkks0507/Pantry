@@ -100,6 +100,11 @@ function VoiceRecorder({
   const [parsed, setParsed] = useState<ParsedItem[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
 
+  // Stop the microphone if the user leaves (e.g. Back) while still recording.
+  useEffect(() => () => {
+    try { ExpoSpeechRecognitionModule.abort(); } catch {}
+  }, [ExpoSpeechRecognitionModule]);
+
   useSpeechRecognitionEvent('result', (e) => {
     const text = e.results?.[0]?.transcript || '';
     setTranscript(text);
@@ -111,6 +116,7 @@ function VoiceRecorder({
 
   useSpeechRecognitionEvent('error', (e) => {
     setListening(false);
+    if (e.error === 'aborted') return;
     Alert.alert('Speech error', e.message || 'Could not recognise speech. Please try again.');
   });
 
