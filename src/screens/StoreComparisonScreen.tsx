@@ -1,33 +1,37 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { C, fonts, ZONES, STORE_META, STORE_PRICE_FACTOR, money } from '../theme';
+import { C, fonts, ZONES, money } from '../theme';
 import { GroceryItem } from '../types';
+import { storePrices } from '../stores';
 import BackButton from '../components/BackButton';
+
+const LOGO_COLORS = [
+  { bg: '#E4EFF5', color: '#3E7FA8' },
+  { bg: '#FCE9D9', color: '#C56A3E' },
+  { bg: '#E7ECF8', color: '#5566B0' },
+  { bg: '#EAF4E8', color: '#4C8A5A' },
+  { bg: '#FBE6E0', color: '#C0432B' },
+  { bg: '#F4EDD9', color: '#9A6713' },
+];
+
+function logoFor(store: string) {
+  const h = store.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return { ...LOGO_COLORS[h % LOGO_COLORS.length], initial: store.trim().charAt(0).toUpperCase() };
+}
 
 export default function StoreComparisonScreen({ item, onBack }: { item: GroceryItem; onBack: () => void }) {
   const zone = ZONES[item.zone];
-
-  const histByStore: Record<string, number> = {};
-  item.hist.forEach((h) => { histByStore[h.store] = h.price; });
-
-  const stores = Object.keys(STORE_META);
-  const comp = stores.map((store) => ({
-    store,
-    price: histByStore[store] != null ? histByStore[store] : Math.round(item.price * (STORE_PRICE_FACTOR[store] ?? 1) * 100) / 100,
-  }));
-  const cmin = Math.min(...comp.map((c) => c.price));
-  const cmax = Math.max(...comp.map((c) => c.price));
-  comp.sort((a, b) => a.price - b.price);
+  const comp = storePrices(item);
+  const cmin = comp.length ? comp[0].price : 0;
+  const cmax = comp.length ? comp[comp.length - 1].price : 0;
 
   const rows = comp.map((c) => {
-    const best = c.price === cmin;
-    const meta = STORE_META[c.store];
+    const best = comp.length > 1 && c.price === cmin;
     return {
-      store: c.store,
-      price: c.price,
+      ...c,
       best,
-      meta,
+      meta: logoFor(c.store),
       cardBorder: best ? '#9FCBA6' : C.border,
       priceColor: best ? '#2C6B43' : C.text,
       barColor: best ? '#5BA86F' : '#C9D2BD',
@@ -35,11 +39,17 @@ export default function StoreComparisonScreen({ item, onBack }: { item: GroceryI
     };
   });
 
-  const curStorePrice = histByStore[item.store] != null ? histByStore[item.store] : item.price;
-  const saveAmt = curStorePrice - comp[0].price;
-  const saveMsg = saveAmt > 0.01
-    ? `${comp[0].store} is cheapest at ${money(comp[0].price)} — about ${money(saveAmt)} less per ${item.unit} than where you last bought it.`
-    : `You bought this at the best price around — ${money(comp[0].price)} at ${comp[0].store}.`;
+  const lastStore = comp.find((c) => c.store.toLowerCase() === item.store.trim().toLowerCase());
+  let saveMsg: string;
+  if (comp.length === 0) {
+    saveMsg = 'No prices recorded yet. Enter what you paid when you tap "Done shopping" and stores will show up here.';
+  } else if (comp.length === 1) {
+    saveMsg = `You've only bought this at ${comp[0].store} so far. Buy it somewhere else and record the price to compare.`;
+  } else if (lastStore && lastStore.price - cmin > 0.01) {
+    saveMsg = `${comp[0].store} was cheapest at ${money(cmin)} — ${money(lastStore.price - cmin)} less than your last buy at ${lastStore.store}.`;
+  } else {
+    saveMsg = `${comp[0].store} has been your cheapest store for this, at ${money(cmin)}.`;
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -76,7 +86,7 @@ export default function StoreComparisonScreen({ item, onBack }: { item: GroceryI
                     </View>
                   )}
                 </View>
-                <Text style={styles.distance}>📍 {r.meta.dist}</Text>
+                <Text style={styles.distance}>Last bought {r.date}</Text>
               </View>
               <Text style={[styles.price, { color: r.priceColor }]}>{money(r.price)}</Text>
             </View>

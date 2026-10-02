@@ -179,7 +179,7 @@ export default function ShoppingListScreen({
           <View style={styles.summary}>
             <View>
               <Text style={styles.summaryMeta}>{shopping.length} items · {checked} in cart</Text>
-              <Text style={styles.summaryTitle}>Cheapest run: {bestStore}</Text>
+              <Text style={styles.summaryTitle}>Usual store: {bestStore}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.summaryMeta}>Est. total</Text>

@@ -35,7 +35,7 @@ export default function RecipeDetailScreen({
       <View style={[styles.hero, { backgroundColor: tileBg }]}>
         <Text style={styles.heroEmoji}>{recipe.emoji}</Text>
         <Text style={styles.heroName}>{recipe.name}</Text>
-        <Text style={styles.heroUses}>Uses {recipe.expiringUse} expiring soon</Text>
+        {!!recipe.expiringUse && <Text style={styles.heroUses}>Uses {recipe.expiringUse} expiring soon</Text>}
         <View style={styles.statRow}>
           {stats.map((s, i) => (
             <View key={i} style={styles.statBox}>

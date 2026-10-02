@@ -27,6 +27,7 @@ import { todayISO } from './src/dates';
 import { withLiveDates } from './src/items';
 import { backTarget, navReducer } from './src/navigation';
 import { Purchase, restock } from './src/restock';
+import { bestRecipe, withPantryState } from './src/recipeMatch';
 import { ensureNotificationPermission, setupNotifications, syncExpiryReminders, useLastNotificationResponse } from './src/notifications';
 
 setupNotifications();
@@ -105,6 +106,14 @@ export default function App() {
   }, []);
 
   const items = useMemo(() => storedItems.map((i) => withLiveDates(i, today)), [storedItems, today]);
+  // Recipes re-checked against the real pantry. AI suggestions win when present;
+  // otherwise the built-in recipes are used.
+  const liveAiRecipes = useMemo(() => aiRecipes.map((r) => withPantryState(r, items)), [aiRecipes, items]);
+  const recipePool = useMemo(
+    () => (liveAiRecipes.length ? liveAiRecipes : RECIPES.map((r) => withPantryState(r, items))),
+    [liveAiRecipes, items],
+  );
+  const topRecipe = useMemo(() => bestRecipe(recipePool, items), [recipePool, items]);
   const activeItem = useMemo(() => items.find((i) => i.id === activeItemId) ?? null, [items, activeItemId]);
 
   useEffect(() => { if (ready) saveItems(storedItems); }, [storedItems, ready]);
@@ -313,6 +322,7 @@ export default function App() {
               onGoExpiry={() => push('expiry')}
               onGoRecipes={() => go('recipes')}
               onOpenRecipe={openRecipe}
+              recipe={topRecipe}
               onComingSoon={() => {}}
               onGoAdd={openAddSheet}
             />
@@ -344,6 +354,7 @@ export default function App() {
           {screen === 'expiry' && (
             <ExpiryScreen
               items={items.filter((i) => i.days <= 3)}
+              recipes={recipePool}
               onBack={back}
               onOpenItem={openItem}
               onOpenRecipe={openRecipe}
@@ -353,7 +364,7 @@ export default function App() {
           {screen === 'recipes' && (
             <RecipesScreen
               items={items}
-              recipes={aiRecipes}
+              recipes={liveAiRecipes}
               loading={recipesLoading}
               error={recipesError}
               onGenerate={generateRecipes}

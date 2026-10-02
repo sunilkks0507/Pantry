@@ -42,21 +42,7 @@ export const ZONES: Record<ZoneKey, { label: string; icon: string; bg: string; c
   kitchen: { label: 'Kitchen', icon: '🍽️', bg: '#EEF0DC', color: '#82883C' },
 };
 
-export const STORE_META: Record<string, { dist: string; initial: string; bg: string; color: string }> = {
-  'Whole Foods': { dist: '1.2 mi', initial: 'W', bg: '#E4EFF5', color: '#3E7FA8' },
-  'Trader Joes': { dist: '0.8 mi', initial: 'T', bg: '#FCE9D9', color: '#C56A3E' },
-  Costco: { dist: '4.5 mi', initial: 'C', bg: '#E7ECF8', color: '#5566B0' },
-  'Local Market': { dist: '0.4 mi', initial: 'L', bg: '#EAF4E8', color: '#4C8A5A' },
-};
-
 export const TILE_BG = ['#FCE9D9', '#EAF4E8', '#FBF0D8', '#E4EFF5', '#F1ECDD'];
-
-export const STORE_PRICE_FACTOR: Record<string, number> = {
-  'Trader Joes': 1.0,
-  'Whole Foods': 1.12,
-  Costco: 0.9,
-  'Local Market': 1.05,
-};
 
 export const NAV_SCREENS = ['home', 'inventory', 'recipes', 'list'];
 

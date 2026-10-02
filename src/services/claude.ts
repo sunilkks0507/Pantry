@@ -1,5 +1,6 @@
 import { ZoneKey } from '../theme';
 import { GroceryItem, Recipe } from '../types';
+import { nameMatches } from '../recipeMatch';
 
 // Google Gemini (Google AI Studio) — free-tier API. Get a key at
 // https://aistudio.google.com/app/apikey (looks like "AIza...").
@@ -112,11 +113,6 @@ interface RawRecipe {
   steps?: string[];
 }
 
-function nameMatches(a: string, b: string) {
-  const x = a.trim().toLowerCase();
-  const y = b.trim().toLowerCase();
-  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
-}
 
 function toRecipe(r: RawRecipe, idx: number, items: GroceryItem[]): Recipe {
   const ingNames = (r.ingredients || [])

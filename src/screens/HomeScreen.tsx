@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Modal, TextInput,
 import { LinearGradient } from 'expo-linear-gradient';
 import { C, fonts, ZONES, ZoneKey, statusOf, money } from '../theme';
 import { GroceryItem, Recipe } from '../types';
-import { RECIPES } from '../data';
 import { daysBetween, todayISO } from '../dates';
 
 // Spend on items bought in the last 7 days, today included.
@@ -25,6 +24,7 @@ export default function HomeScreen({
   onGoExpiry,
   onGoRecipes,
   onOpenRecipe,
+  recipe,
   onComingSoon,
   onGoAdd,
 }: {
@@ -35,6 +35,7 @@ export default function HomeScreen({
   onGoExpiry: () => void;
   onGoRecipes: () => void;
   onOpenRecipe: (r: Recipe) => void;
+  recipe: Recipe | null; // best match for what's in the pantry, if any
   onComingSoon: () => void;
   onGoAdd: () => void;
 }) {
@@ -47,7 +48,6 @@ export default function HomeScreen({
   items.forEach((i) => {
     zoneCounts[i.zone] = (zoneCounts[i.zone] || 0) + 1;
   });
-  const top = RECIPES[0];
   const isEmpty = items.length === 0;
   const weekSpend = weekSpendOf(items);
   const initial = profileName.trim() ? profileName.trim()[0].toUpperCase() : '👤';
@@ -156,24 +156,30 @@ export default function HomeScreen({
             })}
           </ScrollView>
 
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Cook before it spoils</Text>
-            <TouchableOpacity onPress={onGoRecipes}>
-              <Text style={styles.sectionLink}>More</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity onPress={() => onOpenRecipe(top)} style={styles.recipeCard} activeOpacity={0.85}>
-            <View style={styles.recipeIcon}>
-              <Text style={{ fontSize: 38 }}>{top.emoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.recipeName}>{top.name}</Text>
-              <Text style={styles.recipeMeta}>⏱ {top.time} · 🔥 {top.calories} cal</Text>
-              <View style={styles.usesTag}>
-                <Text style={styles.usesText}>Uses {top.expiringUse}</Text>
+          {recipe && (
+            <>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Cook before it spoils</Text>
+                <TouchableOpacity onPress={onGoRecipes}>
+                  <Text style={styles.sectionLink}>More</Text>
+                </TouchableOpacity>
               </View>
-            </View>
-          </TouchableOpacity>
+              <TouchableOpacity onPress={() => onOpenRecipe(recipe)} style={styles.recipeCard} activeOpacity={0.85}>
+                <View style={styles.recipeIcon}>
+                  <Text style={{ fontSize: 38 }}>{recipe.emoji}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recipeName}>{recipe.name}</Text>
+                  <Text style={styles.recipeMeta}>⏱ {recipe.time} · 🔥 {recipe.calories} cal</Text>
+                  {!!recipe.expiringUse && (
+                    <View style={styles.usesTag}>
+                      <Text style={styles.usesText}>Uses {recipe.expiringUse}</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
         </>
       )}
     </ScrollView>
