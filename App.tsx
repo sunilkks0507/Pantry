@@ -26,6 +26,7 @@ import { suggestRecipesFromPantry } from './src/services/claude';
 import { todayISO } from './src/dates';
 import { withLiveDates } from './src/items';
 import { backTarget, navReducer } from './src/navigation';
+import { Purchase, restock } from './src/restock';
 
 import BottomNav from './src/components/BottomNav';
 import ComingSoonModal from './src/components/ComingSoonModal';
@@ -179,7 +180,7 @@ export default function App() {
   };
 
   const addItemToShopping = (it: GroceryItem) => {
-    addToShopping([{ id: 'sh-' + it.id + '-' + Date.now(), name: it.name, emoji: it.emoji, note: 'Added from pantry', lastPrice: it.price, lastStore: it.store, qty: 1, unit: it.unit }]);
+    addToShopping([{ id: 'sh-' + it.id + '-' + Date.now(), name: it.name, emoji: it.emoji, note: 'Added from pantry', lastPrice: it.price, lastStore: it.store, qty: 1, unit: it.unit, itemId: it.id }]);
     push('list');
   };
 
@@ -207,7 +208,7 @@ export default function App() {
     if (newQty < threshold) {
       addToShopping([{
         id: 'sh-' + item.id + '-' + Date.now(),
-        name: item.name, emoji: item.emoji, note: 'Running low', lastPrice: item.price, lastStore: item.store, qty: 1, unit: item.unit,
+        name: item.name, emoji: item.emoji, note: 'Running low', lastPrice: item.price, lastStore: item.store, qty: 1, unit: item.unit, itemId: item.id,
       }]);
     }
   };
@@ -233,6 +234,16 @@ export default function App() {
 
   const updateShoppingUnit = (id: string, unit: string) => {
     setShopping((prev) => prev.map((s) => (s.id === id ? { ...s, unit } : s)));
+  };
+
+  // "Done shopping": move the bought items into the pantry and off the list.
+  const checkout = (purchases: Purchase[], store: string) => {
+    if (purchases.length === 0) return;
+    const bought = new Set(purchases.map((p) => p.item.id));
+    setItems((prev) => restock(prev, purchases, store, todayISO()));
+    setShopping((prev) => prev.filter((s) => !bought.has(s.id)));
+    setCart((c) => { const n = { ...c }; bought.forEach((id) => delete n[id]); return n; });
+    go('inventory');
   };
 
   const removeShoppingItem = (id: string) => {
@@ -330,6 +341,7 @@ export default function App() {
               onChangeQty={changeShoppingQty}
               onChangeUnit={updateShoppingUnit}
               onRemove={removeShoppingItem}
+              onCheckout={checkout}
             />
           )}
           {screen === 'add' && <AddItemScreen onBack={back} onSave={addItem} onGoScan={() => push('scan')} />}

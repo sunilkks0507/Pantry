@@ -52,6 +52,7 @@ export interface ShoppingItem {
   lastStore: string;
   qty?: number; // how many to buy (default 1)
   unit?: string; // measuring unit, e.g. kg, g, no (default 'no')
+  itemId?: string; // pantry item this came from, so buying it restocks that item
 }
 
 export interface OnboardingSlide {
