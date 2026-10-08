@@ -84,7 +84,7 @@ export default function ScanScreen({ onBack, onSave, apiKey, onApiKeyChange }: P
       setImageUri(asset.uri);
       setImageBase64(asset.base64 || null);
       const ext = asset.uri.split('.').pop()?.toLowerCase();
-      setImageMime(ext === 'png' ? 'image/png' : 'image/jpeg');
+      setImageMime(asset.mimeType || (ext === 'png' ? 'image/png' : 'image/jpeg'));
       setParsed([]);
       setSelected({});
     }

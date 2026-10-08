@@ -40,7 +40,12 @@ const ITEM_SCHEMA = `For each item return:
 
 Return ONLY a valid JSON array. If no food items found, return [].`;
 
-async function callGemini(apiKey: string, parts: GeminiPart[], maxTokens = 1024): Promise<string> {
+// Newer Gemini Flash models "think" before answering and those thinking
+// tokens count against maxOutputTokens, so the cap must leave plenty of room
+// for the actual JSON (a long receipt alone can need a few thousand tokens).
+const MAX_OUTPUT_TOKENS = 8192;
+
+async function callGemini(apiKey: string, parts: GeminiPart[], maxTokens = MAX_OUTPUT_TOKENS): Promise<string> {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -56,20 +61,87 @@ async function callGemini(apiKey: string, parts: GeminiPart[], maxTokens = 1024)
     const err = await res.text();
     throw new Error(`Gemini API error ${res.status}: ${err}`);
   }
-  const data = await res.json();
-  const out = (data?.candidates?.[0]?.content?.parts || [])
+  return textFromResponse(await res.json());
+}
+
+// Pulls the answer text out of a generateContent response, turning the ways
+// it can come back empty into readable errors instead of "no items".
+export function textFromResponse(data: any): string {
+  const blocked = data?.promptFeedback?.blockReason;
+  if (blocked) throw new Error(`Gemini refused this request (${blocked}). Try a different photo.`);
+  const cand = data?.candidates?.[0];
+  const out = (cand?.content?.parts || [])
+    .filter((p: any) => !p?.thought)
     .map((p: any) => p?.text || '')
     .join('');
-  return out as string;
+  const reason = cand?.finishReason;
+  if (!out.trim()) {
+    if (reason === 'MAX_TOKENS') throw new Error('Gemini ran out of room before answering. Try a photo with fewer items.');
+    if (reason && reason !== 'STOP') throw new Error(`Gemini returned no answer (${reason}).`);
+  }
+  if (reason === 'MAX_TOKENS') {
+    try { extractJSONArray(out); } catch { throw new Error('Gemini\'s answer was cut off. Try a photo with fewer items.'); }
+  }
+  return out;
+}
+
+// Finds the JSON array in a reply. Accepts a bare array or an object that
+// wraps one (e.g. {"items": [...]}). Empty text means "nothing found";
+// anything else that isn't valid JSON is an error, not an empty result.
+export function extractJSONArray(text: string): any[] {
+  const t = text.trim();
+  if (!t) return [];
+  const tryParse = (s: string) => { try { return JSON.parse(s); } catch { return undefined; } };
+  let v = tryParse(t);
+  if (v === undefined) {
+    const m = t.match(/\[[\s\S]*\]/);
+    v = m ? tryParse(m[0]) : undefined;
+  }
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') {
+    const inner = Object.values(v).find(Array.isArray);
+    if (inner) return inner as any[];
+  }
+  throw new Error(`Couldn't read Gemini's answer: ${t.slice(0, 120)}`);
+}
+
+function num(v: unknown, fallback: number): number {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function str(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : v == null ? '' : String(v);
+}
+
+const ZONE_KEYS: ZoneKey[] = ['fridge', 'freezer', 'pantry', 'kitchen'];
+
+// Coerces one model-produced item into the expected shape (numbers may come
+// back as strings like "₹45" or "7 days"); drops entries with no name.
+export function normalizeParsedItem(raw: any): ParsedItem | null {
+  const name = str(raw?.name);
+  if (!name) return null;
+  const zone = str(raw?.zone).toLowerCase() as ZoneKey;
+  return {
+    name,
+    emoji: str(raw?.emoji),
+    qty: Math.max(0, num(raw?.qty, 1)) || 1,
+    unit: str(raw?.unit),
+    days: Math.round(num(raw?.days, 7)),
+    cat: str(raw?.cat),
+    zone: ZONE_KEYS.includes(zone) ? zone : 'pantry',
+    spot: str(raw?.spot),
+    tip: str(raw?.tip),
+    price: Math.max(0, num(raw?.price, 0)),
+    store: str(raw?.store),
+    date: str(raw?.date),
+  };
 }
 
 function parseJSON(text: string): ParsedItem[] {
-  try {
-    const match = text.match(/\[[\s\S]*\]/);
-    return match ? JSON.parse(match[0]) : [];
-  } catch {
-    return [];
-  }
+  return extractJSONArray(text)
+    .map(normalizeParsedItem)
+    .filter((p): p is ParsedItem => p !== null);
 }
 
 export async function parseItemsFromImage(
@@ -161,13 +233,7 @@ For each recipe return an object with these exact fields:
 
 Return ONLY a valid JSON array of the recipe objects, no prose.`;
 
-  const text = await callGemini(apiKey, [{ text: prompt }], 3072);
-  let raw: RawRecipe[] = [];
-  try {
-    const m = text.match(/\[[\s\S]*\]/);
-    raw = m ? JSON.parse(m[0]) : [];
-  } catch {
-    raw = [];
-  }
+  const text = await callGemini(apiKey, [{ text: prompt }]);
+  const raw: RawRecipe[] = extractJSONArray(text);
   return raw.map((r, idx) => toRecipe(r, idx, items));
 }
