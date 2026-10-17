@@ -34,6 +34,14 @@
         "projectId": "54752974-ef2f-4d60-891b-0220a5203b63"
       }
     },
-    "owner": "sunilkks0507"
+    "owner": "sunilkks0507",
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#2C5E3F"
+        }
+      ]
+    ]
   }
 }

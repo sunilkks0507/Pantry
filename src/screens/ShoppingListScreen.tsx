@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Modal, Pressable, TextInput, Alert } from 'react-native';
 import { C, fonts, money, UNITS } from '../theme';
 import { ShoppingItem } from '../types';
+import { Purchase } from '../restock';
 import QtyStepper from '../components/QtyStepper';
 import UnitPicker from '../components/UnitPicker';
 
@@ -13,6 +14,7 @@ export default function ShoppingListScreen({
   onChangeQty,
   onChangeUnit,
   onRemove,
+  onCheckout,
 }: {
   shopping: ShoppingItem[];
   cart: Record<string, boolean>;
@@ -21,12 +23,16 @@ export default function ShoppingListScreen({
   onChangeQty: (id: string, delta: number) => void;
   onChangeUnit: (id: string, unit: string) => void;
   onRemove: (id: string) => void;
+  onCheckout: (purchases: Purchase[], store: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const [draftQty, setDraftQty] = useState(1);
   const [draftUnit, setDraftUnit] = useState('no');
   const [unitEditId, setUnitEditId] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [paid, setPaid] = useState<Record<string, string>>({});
+  const [store, setStore] = useState('');
 
   const total = shopping.reduce((a, b) => a + b.lastPrice * (b.qty ?? 1), 0);
   const checked = shopping.filter((s) => cart[s.id]).length;
@@ -50,6 +56,20 @@ export default function ShoppingListScreen({
       { text: 'Remove', style: 'destructive', onPress: () => onRemove(it.id) },
     ]);
   };
+
+  const inCart = shopping.filter((s) => cart[s.id]);
+  const openCheckout = () => {
+    const pre: Record<string, string> = {};
+    inCart.forEach((s) => { pre[s.id] = s.lastPrice > 0 ? String(s.lastPrice) : ''; });
+    setPaid(pre);
+    setStore(bestStore === '—' ? '' : bestStore);
+    setCheckingOut(true);
+  };
+  const confirmCheckout = () => {
+    onCheckout(inCart.map((s) => ({ item: s, price: Math.max(0, Number(paid[s.id]) || 0) })), store);
+    setCheckingOut(false);
+  };
+  const paidTotal = inCart.reduce((sum, s) => sum + (Number(paid[s.id]) || 0), 0);
 
   const editing = shopping.find((s) => s.id === unitEditId);
   const isEmpty = shopping.length === 0;
@@ -97,6 +117,46 @@ export default function ShoppingListScreen({
         </View>
       </Modal>
 
+      {/* Done shopping: confirm prices + store, then restock the pantry */}
+      <Modal visible={checkingOut} transparent animationType="slide" onRequestClose={() => setCheckingOut(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setCheckingOut(false)} />
+        <View style={styles.checkoutCard}>
+          <Text style={styles.addTitle}>Add {inCart.length} to pantry</Text>
+          <Text style={styles.checkoutHint}>Check what you paid — it builds each item's price history. Leave blank to skip.</Text>
+          <Text style={[styles.addRowLabel, { marginTop: 12, marginBottom: 6 }]}>Store</Text>
+          <TextInput
+            value={store}
+            onChangeText={setStore}
+            placeholder="e.g. DMart"
+            placeholderTextColor="#9AA290"
+            style={styles.addInput}
+          />
+          <ScrollView style={{ maxHeight: 260, marginTop: 12 }} keyboardShouldPersistTaps="handled">
+            {inCart.map((s) => (
+              <View key={s.id} style={styles.checkoutRow}>
+                <Text style={{ fontSize: 20 }}>{s.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemName} numberOfLines={1}>{s.name}</Text>
+                  <Text style={styles.itemNote}>{s.qty ?? 1} {s.unit ?? 'no'}</Text>
+                </View>
+                <Text style={styles.rupee}>₹</Text>
+                <TextInput
+                  value={paid[s.id] ?? ''}
+                  onChangeText={(t) => setPaid((p) => ({ ...p, [s.id]: t.replace(/[^0-9.]/g, '') }))}
+                  placeholder="0"
+                  placeholderTextColor="#9AA290"
+                  keyboardType="decimal-pad"
+                  style={styles.priceInput}
+                />
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity onPress={confirmCheckout} style={styles.addConfirm} activeOpacity={0.85}>
+            <Text style={styles.addConfirmText}>Add to pantry{paidTotal > 0 ? ` · ${money(paidTotal)}` : ''}</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       {/* Per-row unit picker */}
       <UnitPicker
         visible={!!editing}
@@ -119,13 +179,19 @@ export default function ShoppingListScreen({
           <View style={styles.summary}>
             <View>
               <Text style={styles.summaryMeta}>{shopping.length} items · {checked} in cart</Text>
-              <Text style={styles.summaryTitle}>Cheapest run: {bestStore}</Text>
+              <Text style={styles.summaryTitle}>Usual store: {bestStore}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.summaryMeta}>Est. total</Text>
               <Text style={styles.summaryTotal}>{money(total)}</Text>
             </View>
           </View>
+
+          {checked > 0 && (
+            <TouchableOpacity onPress={openCheckout} style={styles.doneBtn} activeOpacity={0.85}>
+              <Text style={styles.doneBtnText}>✓ Done shopping · add {checked} to pantry</Text>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.list}>
             {shopping.map((it) => {
@@ -213,6 +279,13 @@ const styles = StyleSheet.create({
   itemNote: { fontSize: 12, color: C.muted, fontFamily: fonts.body500, marginTop: 2 },
   itemPrice: { fontFamily: fonts.display700, fontSize: 14, color: C.text },
   itemStore: { fontSize: 11, color: '#A9B0A0', fontFamily: fonts.body600 },
+  doneBtn: { marginHorizontal: 20, marginBottom: 14, backgroundColor: C.green, borderRadius: 14, height: 48, alignItems: 'center', justifyContent: 'center' },
+  doneBtnText: { color: '#F4EFE3', fontFamily: fonts.body700, fontSize: 15 },
+  checkoutCard: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
+  checkoutHint: { fontSize: 13, color: C.muted, fontFamily: fonts.body500, marginTop: -6, lineHeight: 19 },
+  checkoutRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F4EFE3' },
+  rupee: { fontFamily: fonts.body700, fontSize: 15, color: C.muted },
+  priceInput: { width: 84, height: 40, backgroundColor: C.cream, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 10, fontSize: 15, fontFamily: fonts.body600, color: C.text, textAlign: 'right' },
   rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F4EFE3' },
   holdHint: { fontSize: 11, color: '#B7BCAE', fontFamily: fonts.body500 },
   emptyState: { alignItems: 'center', paddingHorizontal: 28, paddingTop: 60 },

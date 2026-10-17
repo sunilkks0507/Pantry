@@ -15,8 +15,11 @@ export interface GroceryItem {
   unit: string;
   zone: ZoneKey;
   spot: string;
+  expiresOn: string; // expiry date, "YYYY-MM-DD" (source of truth)
+  boughtOn: string; // purchase date, "YYYY-MM-DD" (source of truth)
+  // Derived from the dates above by withLiveDates() — never edit directly.
   days: number; // days until expiry (negative = already expired)
-  bought: string;
+  bought: string; // display label for boughtOn, e.g. "Jun 23"
   price: number;
   store: string;
   loc: string;
@@ -49,6 +52,7 @@ export interface ShoppingItem {
   lastStore: string;
   qty?: number; // how many to buy (default 1)
   unit?: string; // measuring unit, e.g. kg, g, no (default 'no')
+  itemId?: string; // pantry item this came from, so buying it restocks that item
 }
 
 export interface OnboardingSlide {

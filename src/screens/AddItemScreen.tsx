@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Modal, Pressable } from 'react-native';
 import { C, fonts, ZONES, ZoneKey, UNITS } from '../theme';
 import { GroceryItem } from '../types';
+import { MONTHS, addDays, formatShortDate, fromISODate, toISODate, todayISO } from '../dates';
+import { withLiveDates } from '../items';
 import BackButton from '../components/BackButton';
 
 const EMOJI_BY_ZONE: Record<ZoneKey, string> = {
@@ -13,44 +15,43 @@ const EMOJI_BY_ZONE: Record<ZoneKey, string> = {
 
 const CATEGORIES = ['Produce', 'Dairy', 'Meat', 'Seafood', 'Bakery', 'Frozen', 'Dry Goods', 'Beverage', 'Other'];
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-function fmtMonthDay(m: number, d: number) {
-  return `${MONTHS[m]} ${d}`;
+function daysInMonth(y: number, m: number) {
+  return m === 1 && (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)) ? 29 : DAYS_IN_MONTH[m];
 }
 
-function daysUntil(m: number, d: number): number {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let target = new Date(now.getFullYear(), m, d);
-  if (target < today) target = new Date(now.getFullYear() + 1, m, d);
-  return Math.round((target.getTime() - today.getTime()) / 86400000);
-}
-
-function MonthDayField({
+function DateField({
   label,
-  m,
-  d,
+  value,
+  years,
   onChange,
 }: {
   label: string;
-  m: number;
-  d: number;
-  onChange: (m: number, d: number) => void;
+  value: string; // "YYYY-MM-DD"
+  years: number[];
+  onChange: (iso: string) => void;
 }) {
+  const cur = fromISODate(value);
+  const y = cur.getFullYear();
+  const m = cur.getMonth();
+  const d = cur.getDate();
   const [open, setOpen] = useState(false);
+  const [tmpY, setTmpY] = useState(y);
   const [tmpM, setTmpM] = useState(m);
   const [tmpD, setTmpD] = useState(d);
 
-  const openPicker = () => { setTmpM(m); setTmpD(d); setOpen(true); };
-  const save = () => { onChange(tmpM, Math.min(tmpD, DAYS_IN_MONTH[tmpM])); setOpen(false); };
+  const openPicker = () => { setTmpY(y); setTmpM(m); setTmpD(d); setOpen(true); };
+  const save = () => {
+    onChange(toISODate(new Date(tmpY, tmpM, Math.min(tmpD, daysInMonth(tmpY, tmpM)))));
+    setOpen(false);
+  };
 
   return (
     <View style={{ flex: 1 }}>
       <Text style={styles.label}>{label}</Text>
       <TouchableOpacity onPress={openPicker} style={styles.dateWrap} activeOpacity={0.8}>
-        <Text style={styles.dateText}>{fmtMonthDay(m, d)}</Text>
+        <Text style={styles.dateText}>{formatShortDate(value)}</Text>
         <Text style={{ fontSize: 14 }}>📅</Text>
       </TouchableOpacity>
 
@@ -58,6 +59,18 @@ function MonthDayField({
         <Pressable style={styles.pickerBackdrop} onPress={() => setOpen(false)} />
         <View style={styles.pickerCard}>
           <Text style={styles.pickerTitle}>{label}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {years.map((yr) => (
+              <TouchableOpacity
+                key={yr}
+                onPress={() => setTmpY(yr)}
+                style={[styles.chip, tmpY === yr && styles.chipActive]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.chipText, tmpY === yr && styles.chipTextActive]}>{yr}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {MONTHS.map((mo, i) => (
               <TouchableOpacity
@@ -71,7 +84,7 @@ function MonthDayField({
             ))}
           </ScrollView>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {Array.from({ length: DAYS_IN_MONTH[tmpM] }, (_, i) => i + 1).map((day) => (
+            {Array.from({ length: daysInMonth(tmpY, tmpM) }, (_, i) => i + 1).map((day) => (
               <TouchableOpacity
                 key={day}
                 onPress={() => setTmpD(day)}
@@ -100,8 +113,8 @@ export default function AddItemScreen({
   onSave: (item: GroceryItem) => void;
   onGoScan: () => void;
 }) {
-  const now = new Date();
-  const inSevenDays = new Date(now.getTime() + 7 * 86400000);
+  const today = todayISO();
+  const thisYear = new Date().getFullYear();
 
   const [name, setName] = useState('');
   const [cat, setCat] = useState('Produce');
@@ -110,10 +123,8 @@ export default function AddItemScreen({
   const [qty, setQty] = useState('1');
   const [unit, setUnit] = useState('no');
   const [threshold, setThreshold] = useState('1');
-  const [expiryM, setExpiryM] = useState(inSevenDays.getMonth());
-  const [expiryD, setExpiryD] = useState(inSevenDays.getDate());
-  const [purchaseM, setPurchaseM] = useState(now.getMonth());
-  const [purchaseD, setPurchaseD] = useState(now.getDate());
+  const [expiresOn, setExpiresOn] = useState(() => addDays(today, 7));
+  const [boughtOn, setBoughtOn] = useState(today);
   const [price, setPrice] = useState('');
   const [store, setStore] = useState('');
 
@@ -121,7 +132,7 @@ export default function AddItemScreen({
 
   const handleSave = () => {
     if (!canSave) return;
-    const item: GroceryItem = {
+    const item = withLiveDates({
       id: name.trim().toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
       name: name.trim(),
       emoji: EMOJI_BY_ZONE[zone],
@@ -130,15 +141,15 @@ export default function AddItemScreen({
       unit: unit || 'no',
       zone,
       spot: spot.trim() || ZONES[zone].label,
-      days: daysUntil(expiryM, expiryD),
-      bought: fmtMonthDay(purchaseM, purchaseD),
+      expiresOn,
+      boughtOn,
       price: Number(price) || 0,
       store: store.trim() || '—',
       loc: '',
       tip: 'Keep it in the ' + ZONES[zone].label.toLowerCase() + ' and check on it before it expires.',
       hist: [],
       threshold: Math.max(0, Math.round(Number(threshold) || 1)),
-    };
+    });
     onSave(item);
   };
 
@@ -252,8 +263,8 @@ export default function AddItemScreen({
         </View>
 
         <View style={styles.rowFields}>
-          <MonthDayField label="Expiry date" m={expiryM} d={expiryD} onChange={(m, d) => { setExpiryM(m); setExpiryD(d); }} />
-          <MonthDayField label="Purchase date" m={purchaseM} d={purchaseD} onChange={(m, d) => { setPurchaseM(m); setPurchaseD(d); }} />
+          <DateField label="Expiry date" value={expiresOn} years={[thisYear - 1, thisYear, thisYear + 1, thisYear + 2, thisYear + 3]} onChange={setExpiresOn} />
+          <DateField label="Purchase date" value={boughtOn} years={[thisYear - 1, thisYear]} onChange={setBoughtOn} />
         </View>
 
         <View style={styles.rowFields}>

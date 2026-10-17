@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useReducer, useRef } from 'react';
+import { View, StyleSheet, ActivityIndicator, AppState, BackHandler } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -23,6 +23,14 @@ import { GroceryItem, Recipe, Screen, ShoppingItem } from './src/types';
 import { RECIPES, SHOPPING } from './src/data';
 import { loadItems, saveItems, loadCart, saveCart, hasOnboarded, setOnboarded, loadApiKey, saveApiKey, loadProfileName, saveProfileName, loadShopping, saveShopping } from './src/storage';
 import { suggestRecipesFromPantry } from './src/services/claude';
+import { todayISO } from './src/dates';
+import { withLiveDates } from './src/items';
+import { backTarget, navReducer } from './src/navigation';
+import { Purchase, restock } from './src/restock';
+import { bestRecipe, withPantryState } from './src/recipeMatch';
+import { ensureNotificationPermission, setupNotifications, syncExpiryReminders, useLastNotificationResponse } from './src/notifications';
+
+setupNotifications();
 
 import BottomNav from './src/components/BottomNav';
 import ComingSoonModal from './src/components/ComingSoonModal';
@@ -57,13 +65,14 @@ export default function App() {
   });
 
   const [ready, setReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>('home');
+  const [nav, dispatchNav] = useReducer(navReducer, { screen: 'home', history: [] });
+  const { screen } = nav;
   const [onbIdx, setOnbIdx] = useState(0);
-  const [items, setItems] = useState<GroceryItem[]>([]);
-  const [activeItem, setActiveItem] = useState<GroceryItem | null>(null);
+  const [storedItems, setItems] = useState<GroceryItem[]>([]);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [today, setToday] = useState(todayISO);
   const [activeRecipe, setActiveRecipe] = useState<Recipe>(RECIPES[0]);
   const [cart, setCart] = useState<Record<string, boolean>>({});
-  const [history, setHistory] = useState<Screen[]>([]);
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [profileName, setProfileName] = useState('');
@@ -74,43 +83,98 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [storedItems, storedCart, onboarded, storedKey, storedName, storedShopping] = await Promise.all([
+      const [loadedItems, storedCart, onboarded, storedKey, storedName, storedShopping] = await Promise.all([
         loadItems(), loadCart(), hasOnboarded(), loadApiKey(), loadProfileName(), loadShopping(),
       ]);
-      setItems(storedItems);
+      setItems(loadedItems);
       setCart(storedCart);
       setApiKey(storedKey);
       setProfileName(storedName);
       setShopping(storedShopping ?? SHOPPING);
-      setScreen(onboarded ? 'home' : 'onboarding');
+      dispatchNav({ type: 'go', screen: onboarded ? 'home' : 'onboarding' });
       setReady(true);
     })();
   }, []);
 
-  useEffect(() => { if (ready) saveItems(items); }, [items, ready]);
+  // Keep `today` current so "days left" ticks over at midnight and when the
+  // app returns from the background on a later day.
+  useEffect(() => {
+    const refresh = () => setToday((cur) => { const t = todayISO(); return t === cur ? cur : t; });
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') refresh(); });
+    const timer = setInterval(refresh, 60000);
+    return () => { sub.remove(); clearInterval(timer); };
+  }, []);
+
+  const items = useMemo(() => storedItems.map((i) => withLiveDates(i, today)), [storedItems, today]);
+  // Recipes re-checked against the real pantry. AI suggestions win when present;
+  // otherwise the built-in recipes are used.
+  const liveAiRecipes = useMemo(() => aiRecipes.map((r) => withPantryState(r, items)), [aiRecipes, items]);
+  const recipePool = useMemo(
+    () => (liveAiRecipes.length ? liveAiRecipes : RECIPES.map((r) => withPantryState(r, items))),
+    [liveAiRecipes, items],
+  );
+  const topRecipe = useMemo(() => bestRecipe(recipePool, items), [recipePool, items]);
+  const activeItem = useMemo(() => items.find((i) => i.id === activeItemId) ?? null, [items, activeItemId]);
+
+  useEffect(() => { if (ready) saveItems(storedItems); }, [storedItems, ready]);
+
+  // Expiry reminders: ask for permission once there's something to remind
+  // about, then keep the scheduled notifications in step with the pantry
+  // (debounced, since quantity steppers fire many quick updates).
+  const askedNotifRef = useRef(false);
+  useEffect(() => {
+    if (!ready || screen === 'onboarding' || storedItems.length === 0) return;
+    const timer = setTimeout(async () => {
+      if (!askedNotifRef.current) {
+        askedNotifRef.current = true;
+        await ensureNotificationPermission();
+      }
+      await syncExpiryReminders(storedItems);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [storedItems, ready, today, screen === 'onboarding']);
+
+  // Tapping a reminder opens the Expiry screen (also when it launched the app).
+  const notifResponse = useLastNotificationResponse();
+  const handledNotifRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready || !notifResponse) return;
+    const id = notifResponse.notification.request.identifier;
+    if (handledNotifRef.current === id) return;
+    handledNotifRef.current = id;
+    if (notifResponse.notification.request.content.data?.screen === 'expiry' && screen !== 'onboarding') {
+      dispatchNav({ type: 'go', screen: 'home' });
+      dispatchNav({ type: 'push', screen: 'expiry' });
+    }
+  }, [notifResponse, ready]);
   useEffect(() => { if (ready) saveCart(cart); }, [cart, ready]);
   useEffect(() => { if (ready) saveShopping(shopping); }, [shopping, ready]);
 
-  const push = useCallback((s: Screen) => {
-    setHistory((h) => [...h, screen]);
-    setScreen(s);
-  }, [screen]);
+  const push = useCallback((s: Screen) => dispatchNav({ type: 'push', screen: s }), []);
+  const go = useCallback((s: Screen) => dispatchNav({ type: 'go', screen: s }), []);
+  const back = useCallback(() => dispatchNav({ type: 'back' }), []);
 
-  const go = useCallback((s: Screen) => {
-    setHistory([]);
-    setScreen(s);
-  }, []);
-
-  const back = useCallback(() => {
-    setHistory((h) => {
-      const copy = [...h];
-      const prev = copy.pop() || 'home';
-      setScreen(prev as Screen);
-      return copy;
+  // Android hardware/gesture Back: step back through the app's own history,
+  // then fall back to Home from other tabs; only leave the app from Home.
+  // (Open modals handle Back themselves via onRequestClose.)
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const onbIdxRef = useRef(onbIdx);
+  onbIdxRef.current = onbIdx;
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navRef.current.screen === 'onboarding' && onbIdxRef.current > 0) {
+        setOnbIdx((i) => Math.max(0, i - 1));
+        return true;
+      }
+      if (!backTarget(navRef.current)) return false;
+      dispatchNav({ type: 'back' });
+      return true;
     });
+    return () => sub.remove();
   }, []);
 
-  const openItem = (it: GroceryItem) => { setActiveItem(it); push('item'); };
+  const openItem = (it: GroceryItem) => { setActiveItemId(it.id); push('item'); };
   const openRecipe = (r: Recipe) => { setActiveRecipe(r); push('recipeDetail'); };
 
   const generateRecipes = useCallback(async () => {
@@ -158,7 +222,7 @@ export default function App() {
   };
 
   const addItemToShopping = (it: GroceryItem) => {
-    addToShopping([{ id: 'sh-' + it.id + '-' + Date.now(), name: it.name, emoji: it.emoji, note: 'Added from pantry', lastPrice: it.price, lastStore: it.store, qty: 1, unit: it.unit }]);
+    addToShopping([{ id: 'sh-' + it.id + '-' + Date.now(), name: it.name, emoji: it.emoji, note: 'Added from pantry', lastPrice: it.price, lastStore: it.store, qty: 1, unit: it.unit, itemId: it.id }]);
     push('list');
   };
 
@@ -182,31 +246,28 @@ export default function App() {
     const newQty = Math.max(0, Math.round((item.qty + delta) * 100) / 100);
     const updated = { ...item, qty: newQty };
     setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
-    setActiveItem((cur) => (cur && cur.id === item.id ? updated : cur));
     const threshold = item.threshold ?? 1;
     if (newQty < threshold) {
       addToShopping([{
         id: 'sh-' + item.id + '-' + Date.now(),
-        name: item.name, emoji: item.emoji, note: 'Running low', lastPrice: item.price, lastStore: item.store, qty: 1, unit: item.unit,
+        name: item.name, emoji: item.emoji, note: 'Running low', lastPrice: item.price, lastStore: item.store, qty: 1, unit: item.unit, itemId: item.id,
       }]);
     }
   };
 
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
-    setActiveItem((cur) => (cur && cur.id === id ? null : cur));
+    setActiveItemId((cur) => (cur === id ? null : cur));
     if (screen === 'item') back();
   };
 
   const updateItemUnit = (id: string, unit: string) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, unit } : i)));
-    setActiveItem((cur) => (cur && cur.id === id ? { ...cur, unit } : cur));
   };
 
   const updateItemThreshold = (id: string, threshold: number) => {
     const t = Math.max(0, Math.round(threshold));
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, threshold: t } : i)));
-    setActiveItem((cur) => (cur && cur.id === id ? { ...cur, threshold: t } : cur));
   };
 
   const changeShoppingQty = (id: string, delta: number) => {
@@ -215,6 +276,16 @@ export default function App() {
 
   const updateShoppingUnit = (id: string, unit: string) => {
     setShopping((prev) => prev.map((s) => (s.id === id ? { ...s, unit } : s)));
+  };
+
+  // "Done shopping": move the bought items into the pantry and off the list.
+  const checkout = (purchases: Purchase[], store: string) => {
+    if (purchases.length === 0) return;
+    const bought = new Set(purchases.map((p) => p.item.id));
+    setItems((prev) => restock(prev, purchases, store, todayISO()));
+    setShopping((prev) => prev.filter((s) => !bought.has(s.id)));
+    setCart((c) => { const n = { ...c }; bought.forEach((id) => delete n[id]); return n; });
+    go('inventory');
   };
 
   const removeShoppingItem = (id: string) => {
@@ -251,6 +322,7 @@ export default function App() {
               onGoExpiry={() => push('expiry')}
               onGoRecipes={() => go('recipes')}
               onOpenRecipe={openRecipe}
+              recipe={topRecipe}
               onComingSoon={() => {}}
               onGoAdd={openAddSheet}
             />
@@ -282,6 +354,7 @@ export default function App() {
           {screen === 'expiry' && (
             <ExpiryScreen
               items={items.filter((i) => i.days <= 3)}
+              recipes={recipePool}
               onBack={back}
               onOpenItem={openItem}
               onOpenRecipe={openRecipe}
@@ -291,7 +364,7 @@ export default function App() {
           {screen === 'recipes' && (
             <RecipesScreen
               items={items}
-              recipes={aiRecipes}
+              recipes={liveAiRecipes}
               loading={recipesLoading}
               error={recipesError}
               onGenerate={generateRecipes}
@@ -312,6 +385,7 @@ export default function App() {
               onChangeQty={changeShoppingQty}
               onChangeUnit={updateShoppingUnit}
               onRemove={removeShoppingItem}
+              onCheckout={checkout}
             />
           )}
           {screen === 'add' && <AddItemScreen onBack={back} onSave={addItem} onGoScan={() => push('scan')} />}

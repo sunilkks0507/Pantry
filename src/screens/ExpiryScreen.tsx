@@ -2,17 +2,19 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { C, fonts, ZONES, statusOf, expiresText } from '../theme';
 import { GroceryItem, Recipe } from '../types';
-import { RECIPES } from '../data';
+import { bestRecipe } from '../recipeMatch';
 import BackButton from '../components/BackButton';
 
 export default function ExpiryScreen({
   items,
+  recipes,
   onBack,
   onOpenItem,
   onOpenRecipe,
   onGoRecipes,
 }: {
   items: GroceryItem[];
+  recipes: Recipe[];
   onBack: () => void;
   onOpenItem: (it: GroceryItem) => void;
   onOpenRecipe: (r: Recipe) => void;
@@ -22,7 +24,7 @@ export default function ExpiryScreen({
   const soon = items.filter((i) => i.days >= 0 && i.days <= 3).sort((a, b) => a.days - b.days);
 
   const cookIt = (it: GroceryItem) => {
-    const match = RECIPES.find((r) => r.uses.includes(it.id));
+    const match = bestRecipe(recipes, items, it);
     if (match) onOpenRecipe(match);
     else onGoRecipes();
   };
